@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<p align="center">
+<p align="">
   <!-- Call to Action Links -->
   <a href="#install">
     <b>30-Second Install</b>
@@ -46,7 +46,7 @@
 
 </div>
 
-<p align="center">
+<p align="">
   <!-- Badges -->
 <a href="https://github.com/khulnasoft/gpt4cli/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a> <a href="https://github.com/khulnasoft/gpt4cli/releases?q=cli"><img src="https://img.shields.io/github/v/release/khulnasoft/gpt4cli?filter=cli*" alt="Release" /></a>
 <a href="https://github.com/khulnasoft/gpt4cli/releases?q=server"><img src="https://img.shields.io/github/v/release/khulnasoft/gpt4cli?filter=server*" alt="Release" /></a>
@@ -59,13 +59,13 @@
 
 <br />
 
-<div align="center">
+<div align="">
 <a href="https://trendshift.io/repositories/8994" target="_blank"><img src="https://trendshift.io/api/badge/repositories/8994" alt="khulnasoft%2Fgpt4cli | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </div>
 
 <br>
 
-<h3 align="center">AI driven development in your terminal.<br/>Build entire features and apps with a robust workflow.</h3>
+<h3 align="">AI driven development in your terminal.<br/>Build entire features and apps with a robust workflow.</h3>
 
 <br/>
 <br/>
