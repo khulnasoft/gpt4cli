@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"plandex/fs"
-	"plandex/types"
+	"gpt4cli/fs"
+	"gpt4cli/types"
 	"sync"
 )
 
 func WriteCurrentPlan(id string) error {
-	if fs.HomePlandexDir == "" {
-		return fmt.Errorf("HomePlandexDir not set")
+	if fs.HomeGpt4cliDir == "" {
+		return fmt.Errorf("HomeGpt4cliDir not set")
 	}
 
 	if CurrentProjectId == "" || HomeCurrentPlanPath == "" {
@@ -39,8 +39,8 @@ func WriteCurrentPlan(id string) error {
 }
 
 func ClearCurrentPlan() error {
-	if fs.HomePlandexDir == "" {
-		return fmt.Errorf("HomePlandexDir not set")
+	if fs.HomeGpt4cliDir == "" {
+		return fmt.Errorf("HomeGpt4cliDir not set")
 	}
 
 	if CurrentProjectId == "" || HomeCurrentPlanPath == "" {
@@ -58,8 +58,8 @@ func ClearCurrentPlan() error {
 }
 
 func WriteCurrentBranch(branch string) error {
-	if fs.HomePlandexDir == "" {
-		return fmt.Errorf("HomePlandexDir not set")
+	if fs.HomeGpt4cliDir == "" {
+		return fmt.Errorf("HomeGpt4cliDir not set")
 	}
 
 	if CurrentProjectId == "" || HomeCurrentPlanPath == "" {
@@ -80,7 +80,7 @@ func WriteCurrentBranch(branch string) error {
 		return fmt.Errorf("error marshalling current plan settings: %v", err)
 	}
 
-	dir := filepath.Join(fs.HomePlandexDir, CurrentProjectId, CurrentPlanId)
+	dir := filepath.Join(fs.HomeGpt4cliDir, CurrentProjectId, CurrentPlanId)
 
 	err = os.MkdirAll(dir, os.ModePerm)
 
@@ -102,8 +102,8 @@ func WriteCurrentBranch(branch string) error {
 }
 
 func GetCurrentBranchNamesByPlanId(planIds []string) (map[string]string, error) {
-	if fs.HomePlandexDir == "" {
-		return nil, fmt.Errorf("HomePlandexDir not set")
+	if fs.HomeGpt4cliDir == "" {
+		return nil, fmt.Errorf("HomeGpt4cliDir not set")
 	}
 
 	if CurrentProjectId == "" || HomeCurrentPlanPath == "" {
@@ -138,15 +138,15 @@ func GetCurrentBranchNamesByPlanId(planIds []string) (map[string]string, error) 
 }
 
 func getPlanCurrentBranch(planId string) (string, error) {
-	if fs.HomePlandexDir == "" {
-		return "", fmt.Errorf("HomePlandexDir not set")
+	if fs.HomeGpt4cliDir == "" {
+		return "", fmt.Errorf("HomeGpt4cliDir not set")
 	}
 
 	if CurrentProjectId == "" || HomeCurrentPlanPath == "" {
 		return "", fmt.Errorf("no current project")
 	}
 
-	path := filepath.Join(fs.HomePlandexDir, CurrentProjectId, planId, "settings.json")
+	path := filepath.Join(fs.HomeGpt4cliDir, CurrentProjectId, planId, "settings.json")
 
 	// Check if settings.json exists
 	_, err := os.Stat(path)

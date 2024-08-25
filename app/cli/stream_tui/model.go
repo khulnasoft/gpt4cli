@@ -6,13 +6,13 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 const (
 	MissingFileLoadLabel      = "Load the file into context"
 	MissingFileSkipLabel      = "Skip generating this file"
-	MissingFileOverwriteLabel = "Allow Plandex to overwrite this file"
+	MissingFileOverwriteLabel = "Allow Gpt4cli to overwrite this file"
 )
 
 var promptChoices = []shared.RespondMissingFileChoice{
@@ -36,9 +36,10 @@ type streamUIModel struct {
 
 	mainViewport viewport.Model
 
-	processing bool
-	starting   bool
-	spinner    spinner.Model
+	processing   bool
+	starting     bool
+	spinner      spinner.Model
+	buildSpinner spinner.Model
 
 	building       bool
 	tokensByPath   map[string]int
@@ -92,6 +93,9 @@ func initialModel(prestartReply, prompt string, buildOnly bool) *streamUIModel {
 	s := spinner.New()
 	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	buildSpinner := spinner.New()
+	buildSpinner.Spinner = spinner.MiniDot
 
 	initialState := streamUIModel{
 		buildOnly: buildOnly,
@@ -157,6 +161,7 @@ func initialModel(prestartReply, prompt string, buildOnly bool) *streamUIModel {
 		tokensByPath:   make(map[string]int),
 		finishedByPath: make(map[string]bool),
 		spinner:        s,
+		buildSpinner:   buildSpinner,
 		atScrollBottom: true,
 		starting:       true,
 	}

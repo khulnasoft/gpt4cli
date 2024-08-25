@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"runtime/debug"
 
 	"github.com/gorilla/mux"

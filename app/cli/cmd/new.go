@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"plandex/api"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 
 	"github.com/fatih/color"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +41,7 @@ func new(cmd *cobra.Command, args []string) {
 
 	if apiErr != nil {
 		if apiErr.Type == shared.ApiErrorTypeTrialPlansExceeded {
-			fmt.Fprintf(os.Stderr, "🚨 You've reached the Plandex Cloud anonymous trial limit of %d plans\n", apiErr.TrialPlansExceededError.MaxPlans)
+			fmt.Fprintf(os.Stderr, "🚨 You've reached the Gpt4cli Cloud anonymous trial limit of %d plans\n", apiErr.TrialPlansExceededError.MaxPlans)
 
 			res, err := term.ConfirmYesNo("Upgrade to an unlimited free account?")
 

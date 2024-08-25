@@ -1,6 +1,6 @@
 package plan_exec
 
-import "github.com/plandex/plandex/shared"
+import "github.com/gpt4cli/gpt4cli/shared"
 
 type ExecParams struct {
 	CurrentPlanId        string

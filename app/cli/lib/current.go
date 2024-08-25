@@ -6,13 +6,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"plandex/api"
-	"plandex/fs"
-	"plandex/term"
-	"plandex/types"
+	"gpt4cli/api"
+	"gpt4cli/fs"
+	"gpt4cli/term"
+	"gpt4cli/types"
 
 	"github.com/fatih/color"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 var CurrentProjectId string
@@ -34,27 +34,27 @@ func MaybeResolveProject() {
 }
 
 func resolveProject(mustResolve, shouldCreate bool) {
-	if fs.PlandexDir == "" && mustResolve && shouldCreate {
-		_, _, err := fs.FindOrCreatePlandex()
+	if fs.Gpt4cliDir == "" && mustResolve && shouldCreate {
+		_, _, err := fs.FindOrCreateGpt4cli()
 		if err != nil {
-			term.OutputErrorAndExit("error finding or creating plandex: %v", err)
+			term.OutputErrorAndExit("error finding or creating gpt4cli: %v", err)
 		}
 	}
 
-	if (fs.PlandexDir == "" || fs.ProjectRoot == "") && mustResolve {
+	if (fs.Gpt4cliDir == "" || fs.ProjectRoot == "") && mustResolve {
 		fmt.Printf(
 			"🤷‍♂️ No plans in current directory\nTry %s to create a plan or %s to see plans in nearby directories\n",
-			color.New(color.Bold, term.ColorHiCyan).Sprint("plandex new"),
-			color.New(color.Bold, term.ColorHiCyan).Sprint("plandex plans"))
+			color.New(color.Bold, term.ColorHiCyan).Sprint("gpt4cli new"),
+			color.New(color.Bold, term.ColorHiCyan).Sprint("gpt4cli plans"))
 		os.Exit(0)
 	}
 
-	if fs.PlandexDir == "" {
+	if fs.Gpt4cliDir == "" {
 		return
 	}
 
-	// check if project.json exists in PlandexDir
-	path := filepath.Join(fs.PlandexDir, "project.json")
+	// check if project.json exists in Gpt4cliDir
+	path := filepath.Join(fs.Gpt4cliDir, "project.json")
 	_, err := os.Stat(path)
 
 	if os.IsNotExist(err) {
@@ -81,7 +81,7 @@ func resolveProject(mustResolve, shouldCreate bool) {
 
 	CurrentProjectId = settings.Id
 
-	HomeCurrentProjectDir = filepath.Join(fs.HomePlandexDir, CurrentProjectId)
+	HomeCurrentProjectDir = filepath.Join(fs.HomeGpt4cliDir, CurrentProjectId)
 	HomeCurrentPlanPath = filepath.Join(HomeCurrentProjectDir, "current_plan.json")
 
 	err = os.MkdirAll(HomeCurrentProjectDir, os.ModePerm)
@@ -184,7 +184,7 @@ func mustInitProject() {
 	CurrentProjectId = res.Id
 
 	// write project.json
-	path := filepath.Join(fs.PlandexDir, "project.json")
+	path := filepath.Join(fs.Gpt4cliDir, "project.json")
 	bytes, err := json.Marshal(types.CurrentProjectSettings{
 		Id: CurrentProjectId,
 	})
@@ -201,8 +201,8 @@ func mustInitProject() {
 
 	log.Println("Wrote project.json")
 
-	// write current_plan.json to PlandexHomeDir/[projectId]/current_plan.json
-	dir := filepath.Join(fs.HomePlandexDir, CurrentProjectId)
+	// write current_plan.json to Gpt4cliHomeDir/[projectId]/current_plan.json
+	dir := filepath.Join(fs.HomeGpt4cliDir, CurrentProjectId)
 	err = os.MkdirAll(dir, os.ModePerm)
 
 	if err != nil {

@@ -6,10 +6,10 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func ListBranchesHandler(w http.ResponseWriter, r *http.Request) {

@@ -7,11 +7,11 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	"plandex-server/email"
+	"gpt4cli-server/db"
+	"gpt4cli-server/email"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func CreateEmailVerificationHandler(w http.ResponseWriter, r *http.Request) {

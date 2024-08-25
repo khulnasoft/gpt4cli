@@ -3,12 +3,12 @@ package plan
 import (
 	"context"
 	"log"
-	"plandex-server/db"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"strings"
 	"time"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 var (

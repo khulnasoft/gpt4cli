@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"plandex/term"
-	"plandex/version"
+	"gpt4cli/term"
+	"gpt4cli/version"
 	"runtime"
 	"strings"
 
@@ -23,7 +23,7 @@ import (
 )
 
 func checkForUpgrade() {
-	if os.Getenv("PLANDEX_SKIP_UPGRADE") != "" {
+	if os.Getenv("GPT4CLI_SKIP_UPGRADE") != "" {
 		return
 	}
 
@@ -33,7 +33,7 @@ func checkForUpgrade() {
 
 	term.StartSpinner("")
 	defer term.StopSpinner()
-	latestVersionURL := "https://plandex.ai/cli-version.txt"
+	latestVersionURL := "https://gpt4cli.khulnasoft.com/cli-version.txt"
 	resp, err := http.Get(latestVersionURL)
 	if err != nil {
 		log.Println("Error checking latest version:", err)
@@ -64,7 +64,7 @@ func checkForUpgrade() {
 
 	if latestVersion.GreaterThan(currentVersion) {
 		term.StopSpinner()
-		fmt.Println("A new version of Plandex is available:", color.New(color.Bold, term.ColorHiGreen).Sprint(versionStr))
+		fmt.Println("A new version of Gpt4cli is available:", color.New(color.Bold, term.ColorHiGreen).Sprint(versionStr))
 		fmt.Printf("Current version: %s\n", color.New(color.Bold, term.ColorHiCyan).Sprint(version.Version))
 		confirmed, err := term.ConfirmYesNo("Upgrade to the latest version?")
 		if err != nil {
@@ -80,9 +80,9 @@ func checkForUpgrade() {
 				return
 			}
 			term.StopSpinner()
-			restartPlandex()
+			restartGpt4cli()
 		} else {
-			fmt.Println("Note: set PLANDEX_SKIP_UPGRADE=1 to stop upgrade prompts")
+			fmt.Println("Note: set GPT4CLI_SKIP_UPGRADE=1 to stop upgrade prompts")
 		}
 	}
 }
@@ -91,7 +91,7 @@ func doUpgrade(version string) error {
 	tag := fmt.Sprintf("cli/v%s", version)
 	escapedTag := url.QueryEscape(tag)
 
-	downloadURL := fmt.Sprintf("https://github.com/plandex-ai/plandex/releases/download/%s/plandex_%s_%s_%s.tar.gz", escapedTag, version, runtime.GOOS, runtime.GOARCH)
+	downloadURL := fmt.Sprintf("https://github.com/khulnasoft/gpt4cli/releases/download/%s/gpt4cli_%s_%s_%s.tar.gz", escapedTag, version, runtime.GOOS, runtime.GOARCH)
 	resp, err := http.Get(downloadURL)
 	if err != nil {
 		return fmt.Errorf("failed to download the update: %w", err)
@@ -134,7 +134,7 @@ func doUpgrade(version string) error {
 		}
 
 		// Check if the current file is the binary
-		if header.Typeflag == tar.TypeReg && (header.Name == "plandex" || header.Name == "plandex.exe") {
+		if header.Typeflag == tar.TypeReg && (header.Name == "gpt4cli" || header.Name == "gpt4cli.exe") {
 			err = update.Apply(tarReader, update.Options{})
 			if err != nil {
 				if errors.Is(err, fs.ErrPermission) {
@@ -149,7 +149,7 @@ func doUpgrade(version string) error {
 	return nil
 }
 
-func restartPlandex() {
+func restartGpt4cli() {
 	exe, err := os.Executable()
 	if err != nil {
 		term.OutputErrorAndExit("Failed to determine executable path: %v", err)

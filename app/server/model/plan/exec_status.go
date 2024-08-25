@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"plandex-server/db"
-	"plandex-server/model"
-	"plandex-server/model/prompts"
+	"gpt4cli-server/db"
+	"gpt4cli-server/model"
+	"gpt4cli-server/model/prompts"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"

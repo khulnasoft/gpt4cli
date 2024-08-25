@@ -1,15 +1,34 @@
+## Version 1.1.1
+- Improvements to stream handling that greatly reduce flickering in the terminal when streaming a plan, especially when many files are being built simultaneously. CPU usage is also reduced on both the client and server side.
+- Claude 3.5 Sonnet model and model pack (via OpenRouter.ai) is now built-in.
+
+## Version 1.1.1
+- Improvements to stream handling that greatly reduce flickering in the terminal when streaming a plan, especially when many files are being built simultaneously. CPU usage is also reduced on both the client and server side.
+- Claude 3.5 Sonnet model and model pack (via OpenRouter.ai) is now built-in.
+
+## Version 1.1.1
+- Improvements to stream handling that greatly reduce flickering in the terminal when streaming a plan, especially when many files are being built simultaneously. CPU usage is also reduced on both the client and server side.
+- Claude 3.5 Sonnet model and model pack (via OpenRouter.ai) is now built-in.
+
+## Version 1.1.0
+- Give notes added to context with `gpt4cli load -n 'some note'` automatically generated names in `context ls` list.
+- Fixes for summarization and auto-continue issues that could Gpt4cli to lose track of where it is in the plan and repeat tasks or do tasks out of order, especially when using `tell` and `continue` after the initial `tell`.
+- Improvements to the verification and auto-fix step. Gpt4cli is now more likely to catch and fix placeholder references like "// ... existing code ..." as well as incorrect removal or overwriting of code.
+- After a context file is updated, Gpt4cli is less likely to use an old version of the code from earlier in the conversation--it now uses the latest version much more reliably.
+- Increase wait times when receiving rate limit errors from OpenAI API (common with new OpenAI accounts that haven't spent $50).
+
 ## Version 1.0.1
 - Fix for occasional 'Error getting verify state for file' error
 - Fix for occasional 'Fatal: unable to write new_index file' error
 - Fix for occasional 'nothing to commit, working tree clean' error
-- When hitting OpenAI rate limits, Plandex will now parse error messages that include a recommended wait time and automatically wait that long before retrying, up to 30 seconds (https://github.com/plandex-ai/plandex/issues/123)
+- When hitting OpenAI rate limits, Gpt4cli will now parse error messages that include a recommended wait time and automatically wait that long before retrying, up to 30 seconds (https://github.com/khulnasoft/gpt4cli/issues/123)
 - Some prompt updates to encourage creation of multiple smaller files rather than one mega-file when generating files for a new feature or project. Multiple smaller files are faster to generate, use less tokens, and have a lower error rate compared to a continually updated large file.
 
 ## Version 1.0.0
 ##   ☄️  🌅   gpt-4o is the real deal for coding
 
-- gpt-4o, OpenAI's latest model, is the new default model for Plandex. 4o is much better than gpt-4-turbo (the previous default model) in early testing for coding tasks and agent workflows.
-- If you have not used `plandex set-model` or `plandex set-model default` previously to set a custom model, you will now be use gpt-4o by default. If you *have* used one of those commands, use `plandex set-model` or `plandex set-model default` and select the new `gpt-4o-latest` model-pack to upgrade. 
+- gpt-4o, OpenAI's latest model, is the new default model for Gpt4cli. 4o is much better than gpt-4-turbo (the previous default model) in early testing for coding tasks and agent workflows.
+- If you have not used `gpt4cli set-model` or `gpt4cli set-model default` previously to set a custom model, you will now be use gpt-4o by default. If you *have* used one of those commands, use `gpt4cli set-model` or `gpt4cli set-model default` and select the new `gpt-4o-latest` model-pack to upgrade. 
  
 ##   🛰️  🏥   Reliability improvements: 90% reduction in syntax errors in early testing
 
@@ -17,35 +36,35 @@
 - Significantly improves reliability and reduces syntax errors, mistaken duplication or removal of code, placeholders that reference other code and other similar issues. 
 - With a set of ~30 internal evals spanning 5 common languages, syntax errors were reduced by over 90% on average with gpt-4o. 
 - Logical errors are also reduced (I'm still working on evals for those to get more precise numbers).
-- Plandex is now much better at handling large files and plans that make many updates to the same file. Both could be problematic in previous versions.
-- Plandex is much more resilient to incorrectly labelled file blocks when the model uses the file label format incorrectly to explain something rather than for a file. i.e. "Run this script" and then a bash script block. Previously Plandex would mistakenly create a file called "Run this script". It now ignores blocks like these.
+- Gpt4cli is now much better at handling large files and plans that make many updates to the same file. Both could be problematic in previous versions.
+- Gpt4cli is much more resilient to incorrectly labelled file blocks when the model uses the file label format incorrectly to explain something rather than for a file. i.e. "Run this script" and then a bash script block. Previously Gpt4cli would mistakenly create a file called "Run this script". It now ignores blocks like these.
 
 ##   🧠  🚞   Improvements to core planning engine: better memory and less laziness allow you to accomplish larger and more complex tasks without errors or stopping early
 
-- Plandex is now much better at working through long plans without skipping tasks, repeating tasks it's already done, or otherwise losing track of what it's doing.
-- Plandex is much less likely to leave TODO placeholders in comments instead of fully completing a task, or to otherwise leave a task incomplete.
-- Plandex is much less likely to end a plan before all tasks are completed.
+- Gpt4cli is now much better at working through long plans without skipping tasks, repeating tasks it's already done, or otherwise losing track of what it's doing.
+- Gpt4cli is much less likely to leave TODO placeholders in comments instead of fully completing a task, or to otherwise leave a task incomplete.
+- Gpt4cli is much less likely to end a plan before all tasks are completed.
 
 ##   🏎️  📈   Performance improvements: 2x faster planning and execution
 
 - gpt-4o is twice as fast as gpt-4-turbo for planning, summarization, builds, and more.
-- If you find it's streaming too fast and you aren't able to review the output, try using the `--stop / -s` flag with `plandex tell` or `plandex continue`. It will stop the plan after a single response so you can review it before proceeding. Use `plandex continue` to proceed with the plan once you're ready.
-- Speaking of which, if you're in exploratory mode and want to use less tokens, you can also use the `--no-build / -n` flag with `plandex tell` and `plandex continue`. This prevents Plandex from building files until you run `plandex build` manually.
+- If you find it's streaming too fast and you aren't able to review the output, try using the `--stop / -s` flag with `gpt4cli tell` or `gpt4cli continue`. It will stop the plan after a single response so you can review it before proceeding. Use `gpt4cli continue` to proceed with the plan once you're ready.
+- Speaking of which, if you're in exploratory mode and want to use less tokens, you can also use the `--no-build / -n` flag with `gpt4cli tell` and `gpt4cli continue`. This prevents Gpt4cli from building files until you run `gpt4cli build` manually.
 
 ##   💰  🪙   2x cost reduction: gpt-4o is half the per-token price of gpt-4-turbo
 
 - For the same quantity of tokens, with improved quality and 2x speed, you'll pay half-price.
 
-##   👩‍💻  🎭   New `plandex-dev` and `pdxd` alias in development mode
+##   👩‍💻  🎭   New `gpt4cli-dev` and `pdxd` alias in development mode
 
-- In order to avoid conflicts/overwrites with the `plandex` CLI and `pdx` alias, a new `plandex-dev` command and `pdxd` alias have been added in development mode. 
+- In order to avoid conflicts/overwrites with the `gpt4cli` CLI and `pdx` alias, a new `gpt4cli-dev` command and `pdxd` alias have been added in development mode. 
 
 ##  🐛  🛠️   Bug fixes
 
-- Fix for a potential panic during account creation (https://github.com/plandex-ai/plandex/issues/76)
-- Fixes for some account creation flow issues (https://github.com/plandex-ai/plandex/issues/106)
-- Fix for occasional "Stream buffer tokens too high" error (https://github.com/plandex-ai/plandex/issues/34).
-- Fix for potential panic when updating model settings. Might possibly be the cause of or somehow related to https://github.com/plandex-ai/plandex/issues/121 but hard to be sure (maybe AWS was just being flakey).
+- Fix for a potential panic during account creation (https://github.com/khulnasoft/gpt4cli/issues/76)
+- Fixes for some account creation flow issues (https://github.com/khulnasoft/gpt4cli/issues/106)
+- Fix for occasional "Stream buffer tokens too high" error (https://github.com/khulnasoft/gpt4cli/issues/34).
+- Fix for potential panic when updating model settings. Might possibly be the cause of or somehow related to https://github.com/khulnasoft/gpt4cli/issues/121 but hard to be sure (maybe AWS was just being flakey).
 - Attempted fix for rare git repo race condition @jesseswell_1 caught that gives error ending with: 
 ```
 Exit status 128, output
@@ -54,13 +73,13 @@ Exit status 128, output
 
 ##   📚  🤔   Readme updates
 
-- The [readme](https://github.com/plandex-ai/plandex) has been revamped to be more informative and easier to navigate.
+- The [readme](https://github.com/khulnasoft/gpt4cli) has been revamped to be more informative and easier to navigate.
 
 ##  🏡  📦   Easy self-contained startup script for local mode and self-hosting
 
 ```bash
-git clone https://github.com/plandex-ai/plandex.git
-cd plandex/app
+git clone https://github.com/khulnasoft/gpt4cli.git
+cd gpt4cli/app
 ./start_local.sh
 ``` 
 
@@ -68,47 +87,47 @@ cd plandex/app
 
 ##   🚀  ☝️   Upgrading   
 
-- As always, cloud has already been updated with the latest version. To upgrade the CLI, run any `plandex` command (like `plandex version` or `plandex help` or whatever command you were about to run anyway 🙂)
+- As always, cloud has already been updated with the latest version. To upgrade the CLI, run any `gpt4cli` command (like `gpt4cli version` or `gpt4cli help` or whatever command you were about to run anyway 🙂)
 
 ##   💬  📆   Join me for office hours every Friday 12:30-1:30pm PST in Discord, starting May 17th
 
 - I'll be available by voice and text chat to answer questions, talk about the new version, and hear about your use cases. Come on over and hang out! 
-- Join the discord to get a reminder when office hours are starting: https://discord.gg/plandex-ai
+- Join the discord to get a reminder when office hours are starting: https://discord.gg/khulnasoft
 
 ## Version 0.9.1
-- Improvements to auto-continue check. Plandex now does a better job determining whether a plan is finished or should automatically continue by incorporating the either the latest plan summary or the previous conversation message (if the summary isn't ready yet) into the auto-continue check. Previously the check was using only the latest conversation message.
+- Improvements to auto-continue check. Gpt4cli now does a better job determining whether a plan is finished or should automatically continue by incorporating the either the latest plan summary or the previous conversation message (if the summary isn't ready yet) into the auto-continue check. Previously the check was using only the latest conversation message.
 - Fix for 'exit status 128' errors in a couple of edge case scenarios.
-- Data that is piped into `plandex load` is now automatically given a name in `context ls` via a call to the `namer` role model (previously it had no name, making multiple pipes hard to disambiguate).
+- Data that is piped into `gpt4cli load` is now automatically given a name in `context ls` via a call to the `namer` role model (previously it had no name, making multiple pipes hard to disambiguate).
 
 ## Version 0.9.0
 - Support for custom models, model packs, and default models (see CLI 0.9.0 release notes for details).
 - Better accuracy for updates to existing files.
-- Plandex is less likely to screw up braces, parentheses, and other code structures.
-- Plandex is less likely to mistakenly remove code that it shouldn't.
-- Plandex is now much better at working through very long plans without skipping tasks, repeating tasks it's already done, or otherwise losing track of what it's doing.
-- Server-side support for `plandex diff` command to show pending plan changes in `git diff` format.
+- Gpt4cli is less likely to screw up braces, parentheses, and other code structures.
+- Gpt4cli is less likely to mistakenly remove code that it shouldn't.
+- Gpt4cli is now much better at working through very long plans without skipping tasks, repeating tasks it's already done, or otherwise losing track of what it's doing.
+- Server-side support for `gpt4cli diff` command to show pending plan changes in `git diff` format.
 - Server-side support for archiving and unarchiving plans.
-- Server-side support for `plandex summary` command.
-- Server-side support for `plandex rename` command.
-- Descriptive top-line for `plandex apply` commit messages instead of just "applied pending changes".
-- Better message in `plandex log` when a single piece of context is loaded or updated.
+- Server-side support for `gpt4cli summary` command.
+- Server-side support for `gpt4cli rename` command.
+- Descriptive top-line for `gpt4cli apply` commit messages instead of just "applied pending changes".
+- Better message in `gpt4cli log` when a single piece of context is loaded or updated.
 - Fixes for some rare potential deadlocks and conflicts when building a file or stopping astream.
 
 ## Version 0.8.4
 - Add support for new OpenAI models: `gpt-4-turbo` and `gpt-4-turbo-2024-04-09`
-- Make `gpt-4-turbo` model the new default model for the planner, builder, and auto-continue roles -- in testing it seems to be better at reasoning and significantly less lazy than the previous default for these roles, `gpt-4-turbo-preview` -- any plan that has not previously had its model settings modified will now use `gpt-4-turbo` by default (those that have been modified will need to be updated manually) -- remember that you can always use `plandex set-model` to change models for your plans
-- Fix for handling files that are loaded into context and later deleted from the file system (https://github.com/plandex-ai/plandex/issues/47)
-- Handle file paths with ### prefixes (https://github.com/plandex-ai/plandex/issues/77)
+- Make `gpt-4-turbo` model the new default model for the planner, builder, and auto-continue roles -- in testing it seems to be better at reasoning and significantly less lazy than the previous default for these roles, `gpt-4-turbo-preview` -- any plan that has not previously had its model settings modified will now use `gpt-4-turbo` by default (those that have been modified will need to be updated manually) -- remember that you can always use `gpt4cli set-model` to change models for your plans
+- Fix for handling files that are loaded into context and later deleted from the file system (https://github.com/khulnasoft/gpt4cli/issues/47)
+- Handle file paths with ### prefixes (https://github.com/khulnasoft/gpt4cli/issues/77)
 - Fix for occasional race condition during file builds that causes error "Fatal: Unable to write new index file"
 
 ## Version 0.8.3
-- SMTP_FROM environment variable for setting from address when self-hosting and using SMTP (https://github.com/plandex-ai/plandex/pull/39)
-- Add support for OPENAI_ENDPOINT environment variable for custom OpenAI endpoints (https://github.com/plandex-ai/plandex/pull/46)
+- SMTP_FROM environment variable for setting from address when self-hosting and using SMTP (https://github.com/khulnasoft/gpt4cli/pull/39)
+- Add support for OPENAI_ENDPOINT environment variable for custom OpenAI endpoints (https://github.com/khulnasoft/gpt4cli/pull/46)
 - Add support for OPENAI_ORG_ID environment variable for setting the OpenAI organization ID when using an API key with multiple OpenAI organizations.
-- Fix for unhelpful "Error getting plan, context, convo, or summaries" error message when OpenAI returns an error for invalid API key or insufficient credits (https://github.com/plandex-ai/plandex/issues/32)
+- Fix for unhelpful "Error getting plan, context, convo, or summaries" error message when OpenAI returns an error for invalid API key or insufficient credits (https://github.com/khulnasoft/gpt4cli/issues/32)
 
 ## Version 0.8.2
-- Fix for creating an org that auto-adds users based on email domain (https://github.com/plandex-ai/plandex/issues/24)
+- Fix for creating an org that auto-adds users based on email domain (https://github.com/khulnasoft/gpt4cli/issues/24)
 - Fix for possible crash after error in file build
 - Added crash prevention measures across the board
 - Fix for occasional "replacements failed" error
@@ -118,7 +137,7 @@ cd plandex/app
 ## Version 0.8.1
 - Fixes for two potential server crashes
 - Fix for server git repo remaining in locked state after a crash, which caused various issues
-- Fix for server git user and email not being set in some environments (https://github.com/plandex-ai/plandex/issues/8)
+- Fix for server git user and email not being set in some environments (https://github.com/khulnasoft/gpt4cli/issues/8)
 - Fix for 'replacements failed' error that was popping up in some circumstances
 - Fix for build issue that could cause large updates to fail, take too long, or use too many tokens in some circumstances
 - Clean up extraneous logging
@@ -129,7 +148,7 @@ cd plandex/app
 
 ## Version 0.8.0
 - User management improvements and fixes
-- Backend support for `plandex invite`, `plandex users`, and `plandex revoke` commands
+- Backend support for `gpt4cli invite`, `gpt4cli users`, and `gpt4cli revoke` commands
 - Improvements to copy for email verification emails
 - Fix for org creation when creating a new account
 - Send an email to invited user when they are invited to an org

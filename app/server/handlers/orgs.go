@@ -5,10 +5,10 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func ListOrgsHandler(w http.ResponseWriter, r *http.Request) {

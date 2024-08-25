@@ -2,10 +2,10 @@ package lib
 
 import (
 	"fmt"
-	"plandex/api"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func SelectActiveStream(args []string) (string, string, bool) {

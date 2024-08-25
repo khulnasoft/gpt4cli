@@ -4,8 +4,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"plandex/auth"
-	"plandex/types"
+	"gpt4cli/auth"
+	"gpt4cli/types"
 	"time"
 )
 
@@ -20,13 +20,13 @@ var cloudApiHost string
 var Client types.ApiClient = (*Api)(nil)
 
 func init() {
-	if os.Getenv("PLANDEX_ENV") == "development" {
-		cloudApiHost = os.Getenv("PLANDEX_API_HOST")
+	if os.Getenv("GPT4CLI_ENV") == "development" {
+		cloudApiHost = os.Getenv("GPT4CLI_API_HOST")
 		if cloudApiHost == "" {
 			cloudApiHost = "http://localhost:8080"
 		}
 	} else {
-		cloudApiHost = "https://api.plandex.ai"
+		cloudApiHost = "https://api.gpt4cli.khulnasoft.com"
 	}
 }
 

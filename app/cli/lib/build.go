@@ -1,6 +1,6 @@
 package lib
 
-import "github.com/plandex/plandex/shared"
+import "github.com/gpt4cli/gpt4cli/shared"
 
 var buildPlanInlineFn func(maybeContexts []*shared.Context) (bool, error)
 

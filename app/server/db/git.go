@@ -38,10 +38,10 @@ func initGitRepo(dir string) error {
 	}
 
 	// Configure user name and email for the repository
-	if err := setGitConfig(dir, "user.email", "server@plandex.ai"); err != nil {
+	if err := setGitConfig(dir, "user.email", "server@gpt4cli.khulnasoft.com"); err != nil {
 		return err
 	}
-	if err := setGitConfig(dir, "user.name", "Plandex"); err != nil {
+	if err := setGitConfig(dir, "user.name", "Gpt4cli"); err != nil {
 		return err
 	}
 
@@ -374,7 +374,12 @@ func retryGitWriteOperationIfIndexFileErr(operation func() error) error {
 			return nil
 		}
 
+		log.Printf("Retry attempt %d failed. Error: %v", attempt+1, err)
+
 		if exitError, ok := err.(*exec.ExitError); ok {
+			errorOutput := string(exitError.Stderr)
+			log.Printf("git operation error output: %s", errorOutput)
+
 			if exitError.ExitCode() == 128 && (strings.Contains(string(exitError.Stderr), "new_index file") ||
 				strings.Contains(string(exitError.Stderr), "index.lock')")) {
 
@@ -382,7 +387,11 @@ func retryGitWriteOperationIfIndexFileErr(operation func() error) error {
 				time.Sleep(retryInterval)
 				retryInterval *= 2
 				continue
+			} else {
+				log.Printf("Non-index file error: %v", err)
 			}
+		} else {
+			log.Printf("Non-exit error: %v", err)
 		}
 
 		return err

@@ -16,6 +16,7 @@ RUN cd server && go mod download
 # Copy the actual source code
 COPY ./server ./server
 COPY ./shared ./shared
+COPY ./scripts /scripts
 
 # Set working directory to server
 WORKDIR /app/server
@@ -25,11 +26,11 @@ ENV GOOS=linux
 ENV GOARCH=amd64
 
 # Build the application
-RUN rm -f plandex-server && go build -o plandex-server .
+RUN rm -f gpt4cli-server && go build -o gpt4cli-server .
 
 # Set the port and expose it
 ENV PORT=8080
 EXPOSE 8080
 
 # Command to run the executable
-CMD ["./plandex-server"]
+CMD ["./gpt4cli-server"]

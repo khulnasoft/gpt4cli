@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"plandex/fs"
-	"plandex/term"
-	"plandex/types"
+	"gpt4cli/fs"
+	"gpt4cli/term"
+	"gpt4cli/types"
 )
 
 func MustResolveAuthWithOrg() {
@@ -91,7 +91,7 @@ func RefreshInvalidToken() error {
 	} else {
 		host := Current.Host
 		if host == "" {
-			host = "Plandex Cloud"
+			host = "Gpt4cli Cloud"
 		}
 
 		term.OutputErrorAndExit("Account %s not found on %s", Current.Email, host)

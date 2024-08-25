@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func authenticate(w http.ResponseWriter, r *http.Request, requireOrg bool) *types.ServerAuth {

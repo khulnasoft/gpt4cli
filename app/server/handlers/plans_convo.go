@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
 )

@@ -3,15 +3,15 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -192,6 +192,12 @@ func createCustomModel(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	model.ModelCompatibility.HasImageSupport, err = term.ConfirmYesNo("Is multi-modal image support enabled?")
+	if err != nil {
+		term.OutputErrorAndExit("Error confirming image support: %v", err)
+		return
+	}
+
 	term.StartSpinner("")
 	apiErr := api.Client.CreateCustomModel(model)
 	term.StopSpinner()
@@ -209,7 +215,7 @@ func models(cmd *cobra.Command, args []string) {
 	lib.MustResolveProject()
 
 	if lib.CurrentPlanId == "" {
-		term.OutputErrorAndExit("No current plan")
+		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
 	term.StartSpinner("")
@@ -414,7 +420,7 @@ func deleteCustomModel(cmd *cobra.Command, args []string) {
 func renderSettings(settings *shared.PlanSettings) {
 	modelPack := settings.ModelPack
 
-	color.New(color.Bold, term.ColorHiCyan).Println("🎛️  Current Model Set")
+	color.New(color.Bold, term.ColorHiCyan).Println("🎛️  Current Model Pack")
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetAutoFormatHeaders(false)
 	table.SetAutoWrapText(true)

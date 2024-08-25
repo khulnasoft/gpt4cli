@@ -1,7 +1,7 @@
 package changes_tui
 
 import (
-	"plandex/term"
+	"gpt4cli/term"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"

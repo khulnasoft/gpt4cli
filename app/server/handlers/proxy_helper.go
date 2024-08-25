@@ -6,11 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"plandex-server/db"
-	"plandex-server/host"
+	"gpt4cli-server/db"
+	"gpt4cli-server/host"
 	"time"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func proxyActivePlanMethod(w http.ResponseWriter, r *http.Request, planId, branch, method string) {

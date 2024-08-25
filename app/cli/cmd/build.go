@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/plan_exec"
-	"plandex/term"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/plan_exec"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -32,8 +32,7 @@ func build(cmd *cobra.Command, args []string) {
 	lib.MustResolveProject()
 
 	if lib.CurrentPlanId == "" {
-		fmt.Println("🤷‍♂️ No current plan")
-		return
+		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
 	apiKeys := lib.MustVerifyApiKeys()
@@ -63,6 +62,6 @@ func build(cmd *cobra.Command, args []string) {
 		term.PrintCmds("", "ps", "connect", "stop")
 	} else {
 		fmt.Println()
-		term.PrintCmds("", "changes", "apply", "log")
+		term.PrintCmds("", "changes", "apply", "reject", "log")
 	}
 }

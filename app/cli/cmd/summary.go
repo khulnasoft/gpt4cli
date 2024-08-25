@@ -2,13 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 
 	"github.com/spf13/cobra"
 )
+
+var summaryPlain bool
 
 var statusCmd = &cobra.Command{
 	Use:   "summary",
@@ -18,6 +20,8 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(statusCmd)
+
+	statusCmd.Flags().BoolVarP(&summaryPlain, "plain", "p", false, "Output summary in plain text with no ANSI codes")
 }
 
 func status(cmd *cobra.Command, args []string) {
@@ -34,6 +38,11 @@ func status(cmd *cobra.Command, args []string) {
 
 	if status == "" {
 		fmt.Println("🤷‍♂️ No summary available")
+	}
+
+	if summaryPlain {
+		fmt.Println(status)
+		return
 	}
 
 	md, err := term.GetMarkdown(status)

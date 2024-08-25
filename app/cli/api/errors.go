@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"plandex/auth"
+	"gpt4cli/auth"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func handleApiError(r *http.Response, errBody []byte) *shared.ApiError {

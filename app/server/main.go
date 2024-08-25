@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"plandex-server/db"
-	"plandex-server/host"
-	"plandex-server/model/plan"
+	"gpt4cli-server/db"
+	"gpt4cli-server/host"
+	"gpt4cli-server/model/plan"
 	"syscall"
 	"time"
 

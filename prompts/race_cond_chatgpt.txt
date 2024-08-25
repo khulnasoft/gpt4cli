@@ -357,10 +357,10 @@ func initGitRepo(dir string) error {
 	}
 
 	// Configure user name and email for the repository
-	if err := setGitConfig(dir, "user.email", "server@plandex.ai"); err != nil {
+	if err := setGitConfig(dir, "user.email", "server@gpt4cli.khulnasoft.com"); err != nil {
 		return err
 	}
-	if err := setGitConfig(dir, "user.name", "Plandex"); err != nil {
+	if err := setGitConfig(dir, "user.name", "Gpt4cli"); err != nil {
 		return err
 	}
 
@@ -770,7 +770,7 @@ Server error
   * Stream error
   * Failed to commit
   * Error committing files to git repository for dir
-    /plandex-server/orgs/d17f7c27-9314-4b63-9d79-8a09825f92b/plans/7738457c-f419-4f33-81ff-056949a3c6d8, err
+    /gpt4cli-server/orgs/d17f7c27-9314-4b63-9d79-8a09825f92b/plans/7738457c-f419-4f33-81ff-056949a3c6d8, err
     * Exit status 128, output
       * Fatal: unable to write new_index file
 It seems like you're facing a Git-related issue where it's unable to write to the new_index file. This problem could be due to an existing lock file, permission issues, or a corrupt repository state. As previously suggested, you might want to manually check for .git/index.lock file and ensure your directory permissions are correctly set to allow write operations.

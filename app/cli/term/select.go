@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/plandex-ai/survey/v2"
+	"github.com/khulnasoft-lab/survey/v2"
 )
 
 func SelectFromList(msg string, options []string) (string, error) {

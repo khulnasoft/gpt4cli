@@ -1,13 +1,13 @@
 package changes_tui
 
 import (
-	"plandex/types"
+	"gpt4cli/types"
 	"time"
 
 	bubbleKey "github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 type toggleDidCopyOffMsg struct{}

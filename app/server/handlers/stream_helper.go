@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	modelPlan "plandex-server/model/plan"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	modelPlan "gpt4cli-server/model/plan"
+	"gpt4cli-server/types"
 	"time"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func startResponseStream(w http.ResponseWriter, auth *types.ServerAuth, planId, branch string, isConnect bool) {

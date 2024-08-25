@@ -1,11 +1,10 @@
 package cmd
 
 import (
-	"fmt"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 
 	"github.com/spf13/cobra"
 )
@@ -26,8 +25,7 @@ func diffs(cmd *cobra.Command, args []string) {
 	lib.MaybeResolveProject()
 
 	if lib.CurrentPlanId == "" {
-		fmt.Println("🤷‍♂️ No current plan")
-		return
+		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
 	diffs, err := api.Client.GetPlanDiffs(lib.CurrentPlanId, lib.CurrentBranch)

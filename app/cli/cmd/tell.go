@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/plan_exec"
-	"plandex/term"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/plan_exec"
+	"gpt4cli/term"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -48,8 +48,7 @@ func doTell(cmd *cobra.Command, args []string) {
 	lib.MustResolveProject()
 
 	if lib.CurrentPlanId == "" {
-		fmt.Println("🤷‍♂️ No current plan")
-		return
+		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
 	apiKeys := lib.MustVerifyApiKeys()
@@ -95,9 +94,7 @@ func prepareEditorCommand(editor string, filename string) *exec.Cmd {
 }
 
 func getEditorInstructions(editor string) string {
-
-	return "Write your prompt below, then save and exit to send it to Plandex.\n\n"
-
+	return "👉  Write your prompt below, then save and exit to send it to Gpt4cli.\n• To save and exit, press ESC, then type :wq! and press ENTER.\n• To exit without saving, press ESC, then type :q! and press ENTER.\n\n\n"
 }
 
 func getEditorPrompt() string {
@@ -109,7 +106,7 @@ func getEditorPrompt() string {
 		}
 	}
 
-	tempFile, err := os.CreateTemp(os.TempDir(), "plandex_prompt_*")
+	tempFile, err := os.CreateTemp(os.TempDir(), "gpt4cli_prompt_*")
 	if err != nil {
 		term.OutputErrorAndExit("Failed to create temporary file: %v", err)
 	}

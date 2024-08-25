@@ -7,14 +7,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"plandex-server/db"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func CreatePlanHandler(w http.ResponseWriter, r *http.Request) {

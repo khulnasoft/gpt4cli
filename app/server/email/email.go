@@ -43,7 +43,7 @@ func sendEmailViaSES(recipient, subject, htmlBody, textBody string) error {
 				Data:    aws.String(subject),
 			},
 		},
-		Source: aws.String("Plandex <support@plandex.ai>"),
+		Source: aws.String("Gpt4cli <support@gpt4cli.khulnasoft.com>"),
 	}
 
 	// Attempt to send the email.

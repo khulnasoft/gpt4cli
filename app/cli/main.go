@@ -4,15 +4,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/cmd"
-	"plandex/fs"
-	"plandex/lib"
-	"plandex/plan_exec"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/cmd"
+	"gpt4cli/fs"
+	"gpt4cli/lib"
+	"gpt4cli/plan_exec"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func init() {
@@ -33,7 +33,7 @@ func init() {
 	// set up a file logger
 	// TODO: log rotation
 
-	file, err := os.OpenFile(filepath.Join(fs.HomePlandexDir, "plandex.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	file, err := os.OpenFile(filepath.Join(fs.HomeGpt4cliDir, "gpt4cli.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		term.OutputErrorAndExit("Error opening log file: %v", err)
 	}
@@ -41,7 +41,7 @@ func init() {
 	// Set the output of the logger to the file
 	log.SetOutput(file)
 
-	// log.Println("Starting Plandex - logging initialized")
+	// log.Println("Starting Gpt4cli - logging initialized")
 }
 
 func main() {
@@ -50,7 +50,7 @@ func main() {
 	// Manually check for help flags at the root level
 	if len(os.Args) == 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
 		// Display your custom help here
-		term.PrintCustomHelp()
+		term.PrintCustomHelp(true)
 		os.Exit(0)
 	}
 

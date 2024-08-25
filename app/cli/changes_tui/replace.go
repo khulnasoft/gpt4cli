@@ -1,12 +1,12 @@
 package changes_tui
 
 import (
-	"plandex/term"
+	"gpt4cli/term"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/muesli/reflow/wrap"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 const replacementPrependLines = 20

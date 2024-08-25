@@ -1,12 +1,12 @@
 package changes_tui
 
 import (
-	"plandex/term"
+	"gpt4cli/term"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fatih/color"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func (m changesUIModel) renderSidebar() string {

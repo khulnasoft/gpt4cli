@@ -2,10 +2,10 @@ package auth
 
 import (
 	"fmt"
-	"plandex/term"
-	"plandex/types"
+	"gpt4cli/term"
+	"gpt4cli/types"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func ConvertTrial() error {

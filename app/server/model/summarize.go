@@ -3,11 +3,11 @@ package model
 import (
 	"context"
 	"fmt"
-	"plandex-server/db"
-	"plandex-server/model/prompts"
+	"gpt4cli-server/db"
+	"gpt4cli-server/model/prompts"
 	"time"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
