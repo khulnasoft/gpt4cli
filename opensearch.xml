@@ -4,8 +4,8 @@
   <ShortName>Gpt4cli Docs</ShortName>
   <Description>Search Gpt4cli Docs</Description>
   <InputEncoding>UTF-8</InputEncoding>
-  <Image width="16" height="16" type="image/x-icon">https://docs.gpt4cli.khulnasoft.com/img/favicon.ico</Image>
-  <Url type="text/html" method="get" template="https://docs.gpt4cli.khulnasoft.com/search?q={searchTerms}"/>
-  <Url type="application/opensearchdescription+xml" rel="self" template="https://docs.gpt4cli.khulnasoft.com/opensearch.xml" />
-  <moz:SearchForm>https://docs.gpt4cli.khulnasoft.com/</moz:SearchForm>
+  <Image width="16" height="16" type="image/x-icon">https://gpt4cli.khulnasoft.com/img/favicon.ico</Image>
+  <Url type="text/html" method="get" template="https://gpt4cli.khulnasoft.com/search?q={searchTerms}"/>
+  <Url type="application/opensearchdescription+xml" rel="self" template="https://gpt4cli.khulnasoft.com/opensearch.xml" />
+  <moz:SearchForm>https://gpt4cli.khulnasoft.com/</moz:SearchForm>
 </OpenSearchDescription>
