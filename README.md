@@ -1,13 +1,4 @@
-<h1 align="center">
- <a href="https://gpt4cli.khulnasoft.com">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/gpt4cli-logo-dark.png"/>
-    <source media="(prefers-color-scheme: light)" srcset="images/gpt4cli-logo-light.png"/>
-    <img width="400" src="images/gpt4cli-logo-dark-bg.png"/>
- </a>
- <br />
-</h1>
-<br />
+# gpt4cli
 
 <div align="center">
 
