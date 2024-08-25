@@ -12,7 +12,7 @@
     <b>Website</b>
   </a>
    · 
-  <a href="https://docs.gpt4cli.khulnasoft.com/">
+  <a href="https://gpt4cli.khulnasoft.com/">
     <b>Docs</b>
   </a>
    · 
@@ -20,7 +20,7 @@
     <b>Examples</b>
   </a>
    · 
-  <a href="https://docs.gpt4cli.khulnasoft.com/hosting/self-hosting">
+  <a href="https://gpt4cli.khulnasoft.com/hosting/self-hosting">
     <b>Self-Hosting</b>
   </a>
    <!-- · 
@@ -93,7 +93,7 @@
 - [Overview](#overview-)
 - [Install](#install)
 - [Get started](#get-started-)
-- [Docs](https://docs.gpt4cli.khulnasoft.com/)
+- [Docs](https://gpt4cli.khulnasoft.com/)
 - [Build complex software](#build-complex-software-with-llms-)
 - [Why Gpt4cli?](#why-gpt4cli-)
 - [Roadmap](#roadmap-%EF%B8%8F)
@@ -119,7 +119,7 @@ curl -sL https://raw.githubusercontent.com/khulnasoft/gpt4cli/main/app/cli/insta
 
 **Note:** Windows is supported via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). Gpt4cli only works correctly on Windows in the WSL shell. It doesn't work in the Windows CMD prompt or PowerShell.
 
-[More installation options.](https://docs.gpt4cli.khulnasoft.com/install)
+[More installation options.](https://gpt4cli.khulnasoft.com/install)
 
 <br/>
 
@@ -182,13 +182,13 @@ gpt4cli tell "add a new line chart showing the number of foobars over time to co
 
 Gpt4cli will make a plan for your task and then implement that plan in code. **The changes won't yet be applied to your project files.** Instead, they'll accumulate in Gpt4cli's sandbox.
 
-To learn about reviewing changes, iterating on the plan, and applying changes to your project, **[continue with the full quickstart.](https://docs.gpt4cli.khulnasoft.com/quick-start#review-the-changes)**
+To learn about reviewing changes, iterating on the plan, and applying changes to your project, **[continue with the full quickstart.](https://gpt4cli.khulnasoft.com/quick-start#review-the-changes)**
 
 <br/>
 
 ## Docs  🛠️
 
-### [👉  Full documentation.](https://docs.gpt4cli.khulnasoft.com/)
+### [👉  Full documentation.](https://gpt4cli.khulnasoft.com/)
 
 
 <br/>
@@ -250,6 +250,6 @@ Speaking of feedback, feel free to give yours, ask questions, report a bug, or j
 
 Work on tests, evals, prompts, and bug fixes is especially appreciated.
 
-[Here's an overview on setting up a development environment.](https://docs.gpt4cli.khulnasoft.com/development)
+[Here's an overview on setting up a development environment.](https://gpt4cli.khulnasoft.com/development)
 
 
