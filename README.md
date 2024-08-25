@@ -114,7 +114,7 @@
 ## Install  📥
 
 ```bash
-curl -sL https://gpt4cli.khulnasoft.com/install.sh | bash
+curl -sL https://raw.githubusercontent.com/khulnasoft/gpt4cli/main/app/cli/install.sh | bash
 ```
 
 **Note:** Windows is supported via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). Gpt4cli only works correctly on Windows in the WSL shell. It doesn't work in the Windows CMD prompt or PowerShell.

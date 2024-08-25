@@ -8,7 +8,7 @@ sidebar_label: Install
 ## Quick Install
 
 ```bash
-curl -sL https://gpt4cli.khulnasoft.com/install.sh | bash
+curl -sL https://raw.githubusercontent.com/khulnasoft/gpt4cli/main/app/cli/install.sh | bash
 ```
 
 ## Manual install
