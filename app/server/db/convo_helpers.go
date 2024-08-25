@@ -107,7 +107,7 @@ func StoreConvoMessage(message *ConvoMessage, currentUserId, branch string, comm
 		desc = "💬 User prompt"
 		// TODO: add user name
 	} else {
-		desc = "🤖 Plandex reply"
+		desc = "🤖 Gpt4cli reply"
 		if message.Stopped {
 			desc += " | 🛑 " + color.New(color.FgHiRed).Sprint("stopped")
 		}

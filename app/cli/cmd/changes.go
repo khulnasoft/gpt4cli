@@ -2,14 +2,14 @@ package cmd
 
 import (
 	"fmt"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/changes_tui"
-	"plandex/lib"
-	"plandex/plan_exec"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/changes_tui"
+	"gpt4cli/lib"
+	"gpt4cli/plan_exec"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 

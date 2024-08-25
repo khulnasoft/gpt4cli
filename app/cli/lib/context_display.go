@@ -1,6 +1,6 @@
 package lib
 
-import "github.com/plandex/plandex/shared"
+import "github.com/gpt4cli/gpt4cli/shared"
 
 func GetContextLabelAndIcon(contextType shared.ContextType) (string, string) {
 	var icon string
@@ -21,6 +21,9 @@ func GetContextLabelAndIcon(contextType shared.ContextType) (string, string) {
 	case shared.ContextPipedDataType:
 		icon = "↔️ "
 		lbl = "piped"
+	case shared.ContextImageType:
+		icon = "🖼️ "
+		lbl = "image"
 	}
 
 	return lbl, icon

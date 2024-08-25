@@ -6,10 +6,10 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func StartTrialHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,8 +45,8 @@ func StartTrialHandler(w http.ResponseWriter, r *http.Request) {
 
 	user := &db.User{
 		Name:    "Trial User " + tag,
-		Email:   tag + "@trial.plandex.ai",
-		Domain:  "trial.plandex.ai",
+		Email:   tag + "@trial.gpt4cli.khulnasoft.com",
+		Domain:  "trial.gpt4cli.khulnasoft.com",
 		IsTrial: true,
 	}
 	err = db.CreateUser(user, tx)

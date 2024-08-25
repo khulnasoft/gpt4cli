@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"os"
 
-	"plandex-server/db"
-	"plandex-server/model"
-	"plandex-server/model/lib"
-	"plandex-server/model/prompts"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/model"
+	"gpt4cli-server/model/lib"
+	"gpt4cli-server/model/prompts"
+	"gpt4cli-server/types"
 
 	"github.com/google/uuid"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -37,6 +37,7 @@ func Tell(clients map[string]*openai.Client, plan *db.Plan, branch string, auth 
 		"",
 		req.BuildMode == shared.BuildModeAuto,
 		"",
+		0,
 	)
 
 	log.Printf("Tell: Tell operation completed successfully for plan ID %s on branch %s\n", plan.Id, branch)
@@ -53,6 +54,7 @@ func execTellPlan(
 	missingFileResponse shared.RespondMissingFileChoice,
 	shouldBuildPending bool,
 	autoContinueNextTask string,
+	numErrorRetry int,
 ) {
 	log.Printf("execTellPlan: Called for plan ID %s on branch %s, iteration %d\n", plan.Id, branch, iteration)
 	currentUserId := auth.User.Id
@@ -98,15 +100,16 @@ func execTellPlan(
 	}
 
 	state := &activeTellStreamState{
-		clients:             clients,
-		req:                 req,
-		auth:                auth,
-		currentOrgId:        currentOrgId,
-		currentUserId:       currentUserId,
-		plan:                plan,
-		branch:              branch,
-		iteration:           iteration,
-		missingFileResponse: missingFileResponse,
+		clients:                clients,
+		req:                    req,
+		auth:                   auth,
+		currentOrgId:           currentOrgId,
+		currentUserId:          currentUserId,
+		plan:                   plan,
+		branch:                 branch,
+		iteration:              iteration,
+		missingFileResponse:    missingFileResponse,
+		currentReplyNumRetries: numErrorRetry,
 	}
 
 	err = state.loadTellPlan()
@@ -179,6 +182,40 @@ func execTellPlan(
 		systemMessage,
 	}
 
+	// Add a separate message for image contexts
+	for _, context := range state.modelContext {
+		if context.ContextType == shared.ContextImageType {
+			if !state.settings.ModelPack.Planner.BaseModelConfig.HasImageSupport {
+				err = fmt.Errorf("%s does not support images in context", state.settings.ModelPack.Planner.BaseModelConfig.ModelName)
+				log.Println(err)
+				active.StreamDoneCh <- &shared.ApiError{
+					Type:   shared.ApiErrorTypeOther,
+					Status: http.StatusBadRequest,
+					Msg:    "Model does not support images in context",
+				}
+				return
+			}
+
+			imageMessage := openai.ChatCompletionMessage{
+				Role: openai.ChatMessageRoleUser,
+				MultiContent: []openai.ChatMessagePart{
+					{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Image: %s", context.Name),
+					},
+					{
+						Type: openai.ChatMessagePartTypeImageURL,
+						ImageURL: &openai.ChatMessageImageURL{
+							URL:    shared.GetImageDataURI(context.Body, context.FilePath),
+							Detail: context.ImageDetail,
+						},
+					},
+				},
+			}
+			state.messages = append(state.messages, imageMessage)
+		}
+	}
+
 	var (
 		numPromptTokens int
 		promptTokens    int
@@ -219,7 +256,7 @@ func execTellPlan(
 		return
 	}
 
-	if !state.summarizeEarlyMessagesIfNeeded() {
+	if !state.injectSummariesAsNeeded() {
 		return
 	}
 
@@ -241,8 +278,12 @@ func execTellPlan(
 			// if the user is continuing the plan, we need to check whether the previous message was a user message or assistant message
 			lastMessage := state.messages[len(state.messages)-1]
 
+			log.Println("User is continuing plan. Last message:\n\n", lastMessage.Content)
+
 			if lastMessage.Role == openai.ChatMessageRoleUser {
 				// if last message was a user message, we want to remove it from the messages array and then use that last message as the prompt so we can continue from where the user left off
+
+				log.Println("User is continuing plan. Last message was user message. Using last user message as prompt")
 
 				state.messages = state.messages[:len(state.messages)-1]
 				promptMessage = &openai.ChatCompletionMessage{
@@ -252,6 +293,10 @@ func execTellPlan(
 
 				state.userPrompt = lastMessage.Content
 			} else {
+
+				// if the last message was an assistant message, we'll use the user continue prompt
+				log.Println("User is continuing plan. Last message was assistant message. Using user continue prompt")
+
 				// otherwise we'll use the continue prompt
 				promptMessage = &openai.ChatCompletionMessage{
 					Role:    openai.ChatMessageRoleUser,

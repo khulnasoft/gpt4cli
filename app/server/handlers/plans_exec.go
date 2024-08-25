@@ -7,14 +7,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"plandex-server/db"
-	"plandex-server/host"
-	modelPlan "plandex-server/model/plan"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/host"
+	modelPlan "gpt4cli-server/model/plan"
+	"gpt4cli-server/types"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 const TrialMaxReplies = 10

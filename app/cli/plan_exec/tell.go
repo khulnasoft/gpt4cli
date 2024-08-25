@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/fs"
-	"plandex/stream"
-	streamtui "plandex/stream_tui"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/fs"
+	"gpt4cli/stream"
+	streamtui "gpt4cli/stream_tui"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func TellPlan(
@@ -93,7 +93,7 @@ func TellPlan(
 
 		if apiErr != nil {
 			if apiErr.Type == shared.ApiErrorTypeTrialMessagesExceeded {
-				fmt.Fprintf(os.Stderr, "\n🚨 You've reached the Plandex Cloud anonymous trial limit of %d messages per plan\n", apiErr.TrialMessagesExceededError.MaxReplies)
+				fmt.Fprintf(os.Stderr, "\n🚨 You've reached the Gpt4cli Cloud anonymous trial limit of %d messages per plan\n", apiErr.TrialMessagesExceededError.MaxReplies)
 
 				res, err := term.ConfirmYesNo("Upgrade to an unlimited free account?")
 
@@ -131,9 +131,9 @@ func TellPlan(
 				fmt.Println()
 
 				if tellStop {
-					term.PrintCmds("", "continue", "changes", "diff", "apply", "log", "rewind")
+					term.PrintCmds("", "continue", "changes", "diff", "apply", "reject", "log", "rewind")
 				} else {
-					term.PrintCmds("", "changes", "diff", "apply", "log", "rewind")
+					term.PrintCmds("", "changes", "diff", "apply", "reject", "log", "rewind")
 				}
 				os.Exit(0)
 			}()

@@ -93,7 +93,7 @@ func (state *CurrentPlanState) pendingChangesSummary(forApply bool, commitSummar
 	rebuildPathsSet := make(map[string]bool)
 
 	if forApply {
-		msgs = append(msgs, "🤖 Plandex → "+commitSummary)
+		msgs = append(msgs, "🤖 Gpt4cli → "+commitSummary)
 	} else {
 		for _, ch := range sortedChangesets {
 			allRebuild := true

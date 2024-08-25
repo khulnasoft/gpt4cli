@@ -3,11 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/format"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/format"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 	"strconv"
 
 	"github.com/fatih/color"
@@ -17,7 +17,7 @@ import (
 
 var contextCmd = &cobra.Command{
 	Use:     "ls",
-	Aliases: []string{"ls"},
+	Aliases: []string{"list-context"},
 	Short:   "List everything in context",
 	Run:     listContext,
 }
@@ -49,7 +49,7 @@ func listContext(cmd *cobra.Command, args []string) {
 	for i, context := range contexts {
 		totalTokens += context.NumTokens
 
-		t, icon := lib.GetContextLabelAndIcon(context.ContextType)
+		t, icon := context.TypeAndIcon()
 
 		name := context.Name
 		if len(name) > 40 {

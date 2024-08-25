@@ -1,15 +1,15 @@
 package cmd
 
 import (
-	"plandex/auth"
-	"plandex/term"
+	"gpt4cli/auth"
+	"gpt4cli/term"
 
 	"github.com/spf13/cobra"
 )
 
 var signInCmd = &cobra.Command{
 	Use:   "sign-in",
-	Short: "Sign in to a Plandex account",
+	Short: "Sign in to a Gpt4cli account",
 	Args:  cobra.NoArgs,
 	Run:   signIn,
 }

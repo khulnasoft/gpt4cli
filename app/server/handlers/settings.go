@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 	"reflect"
 
 	"github.com/gorilla/mux"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {

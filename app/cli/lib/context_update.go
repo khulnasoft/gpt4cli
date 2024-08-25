@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"plandex/api"
-	"plandex/fs"
-	"plandex/term"
-	"plandex/types"
-	"plandex/url"
+	"gpt4cli/api"
+	"gpt4cli/fs"
+	"gpt4cli/term"
+	"gpt4cli/types"
+	"gpt4cli/url"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func MustCheckOutdatedContext(quiet bool, maybeContexts []*shared.Context) (contextOutdated, updated bool) {
@@ -465,7 +465,7 @@ func tableForContextOutdated(updatedContexts []*shared.Context, tokenDiffsById m
 	table.SetAutoWrapText(false)
 
 	for _, context := range updatedContexts {
-		t, icon := GetContextLabelAndIcon(context.ContextType)
+		t, icon := context.TypeAndIcon()
 		diff := tokenDiffsById[context.Id]
 
 		diffStr := "+" + strconv.Itoa(diff)

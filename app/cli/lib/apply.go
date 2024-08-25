@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"plandex/api"
-	"plandex/fs"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/fs"
+	"gpt4cli/term"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func MustApplyPlan(planId, branch string, autoConfirm bool) {
@@ -193,12 +193,12 @@ func MustApplyPlan(planId, branch string, autoConfirm bool) {
 		return
 	} else {
 		if isRepo {
-			fmt.Println("✏️  Plandex can commit these updates with an automatically generated message.")
+			fmt.Println("✏️  Gpt4cli can commit these updates with an automatically generated message.")
 			fmt.Println()
-			fmt.Println("ℹ️  Only the files that Plandex is updating will be included the commit. Any other changes, staged or unstaged, will remain exactly as they are.")
+			fmt.Println("ℹ️  Only the files that Gpt4cli is updating will be included the commit. Any other changes, staged or unstaged, will remain exactly as they are.")
 			fmt.Println()
 
-			confirmed, err := term.ConfirmYesNo("Commit Plandex updates now?")
+			confirmed, err := term.ConfirmYesNo("Commit Gpt4cli updates now?")
 
 			if err != nil {
 				onErr("failed to get confirmation user input: %s", err)

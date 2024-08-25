@@ -14,12 +14,12 @@ func init() {
 		panic(fmt.Errorf("error getting user home dir: %v", err))
 	}
 
-	BaseDir = os.Getenv("PLANDEX_BASE_DIR")
+	BaseDir = os.Getenv("GPT4CLI_BASE_DIR")
 	if BaseDir == "" {
 		if os.Getenv("GOENV") == "development" {
-			BaseDir = filepath.Join(home, "plandex-server")
+			BaseDir = filepath.Join(home, "gpt4cli-server")
 		} else {
-			BaseDir = "/plandex-server"
+			BaseDir = "/gpt4cli-server"
 		}
 	}
 }

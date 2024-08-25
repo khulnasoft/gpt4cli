@@ -7,19 +7,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"plandex/term"
-	"plandex/types"
+	"gpt4cli/term"
+	"gpt4cli/types"
 	"strings"
 	"sync"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
 var Cwd string
-var PlandexDir string
+var Gpt4cliDir string
 var ProjectRoot string
-var HomePlandexDir string
+var HomeGpt4cliDir string
 var CacheDir string
 
 var HomeDir string
@@ -39,21 +39,21 @@ func init() {
 	}
 	HomeDir = home
 
-	if os.Getenv("PLANDEX_ENV") == "development" {
-		HomePlandexDir = filepath.Join(home, ".plandex-home-dev")
+	if os.Getenv("GPT4CLI_ENV") == "development" {
+		HomeGpt4cliDir = filepath.Join(home, ".gpt4cli-home-dev")
 	} else {
-		HomePlandexDir = filepath.Join(home, ".plandex-home")
+		HomeGpt4cliDir = filepath.Join(home, ".gpt4cli-home")
 	}
 
-	// Create the home plandex directory if it doesn't exist
-	err = os.MkdirAll(HomePlandexDir, os.ModePerm)
+	// Create the home gpt4cli directory if it doesn't exist
+	err = os.MkdirAll(HomeGpt4cliDir, os.ModePerm)
 	if err != nil {
 		term.OutputErrorAndExit(err.Error())
 	}
 
-	CacheDir = filepath.Join(HomePlandexDir, "cache")
-	HomeAuthPath = filepath.Join(HomePlandexDir, "auth.json")
-	HomeAccountsPath = filepath.Join(HomePlandexDir, "accounts.json")
+	CacheDir = filepath.Join(HomeGpt4cliDir, "cache")
+	HomeAuthPath = filepath.Join(HomeGpt4cliDir, "auth.json")
+	HomeAccountsPath = filepath.Join(HomeGpt4cliDir, "accounts.json")
 
 	err = os.MkdirAll(filepath.Join(CacheDir, "tiktoken"), os.ModePerm)
 	if err != nil {
@@ -64,32 +64,32 @@ func init() {
 		term.OutputErrorAndExit(err.Error())
 	}
 
-	PlandexDir = findPlandex(Cwd)
-	if PlandexDir != "" {
+	Gpt4cliDir = findGpt4cli(Cwd)
+	if Gpt4cliDir != "" {
 		ProjectRoot = Cwd
 	}
 }
 
-func FindOrCreatePlandex() (string, bool, error) {
-	PlandexDir = findPlandex(Cwd)
-	if PlandexDir != "" {
+func FindOrCreateGpt4cli() (string, bool, error) {
+	Gpt4cliDir = findGpt4cli(Cwd)
+	if Gpt4cliDir != "" {
 		ProjectRoot = Cwd
-		return PlandexDir, false, nil
+		return Gpt4cliDir, false, nil
 	}
 
 	// Determine the directory path
 	var dir string
-	if os.Getenv("PLANDEX_ENV") == "development" {
-		dir = filepath.Join(Cwd, ".plandex-dev")
+	if os.Getenv("GPT4CLI_ENV") == "development" {
+		dir = filepath.Join(Cwd, ".gpt4cli-dev")
 	} else {
-		dir = filepath.Join(Cwd, ".plandex")
+		dir = filepath.Join(Cwd, ".gpt4cli")
 	}
 
 	err := os.Mkdir(dir, os.ModePerm)
 	if err != nil {
 		return "", false, err
 	}
-	PlandexDir = dir
+	Gpt4cliDir = dir
 	ProjectRoot = Cwd
 
 	return dir, true, nil
@@ -125,7 +125,7 @@ func IsGitRepo(dir string) bool {
 type ProjectPaths struct {
 	ActivePaths    map[string]bool
 	AllPaths       map[string]bool
-	PlandexIgnored *ignore.GitIgnore
+	Gpt4cliIgnored *ignore.GitIgnore
 	IgnoredPaths   map[string]string
 }
 
@@ -138,7 +138,7 @@ func GetProjectPaths(baseDir string) (*ProjectPaths, error) {
 }
 
 func GetPaths(baseDir, currentDir string) (*ProjectPaths, error) {
-	ignored, err := GetPlandexIgnore(currentDir)
+	ignored, err := GetGpt4cliIgnore(currentDir)
 
 	if err != nil {
 		return nil, err
@@ -295,7 +295,7 @@ func GetPaths(baseDir, currentDir string) (*ProjectPaths, error) {
 				if info.Name() == ".git" {
 					return filepath.SkipDir
 				}
-				if info.Name() == ".plandex" || info.Name() == ".plandex-dev" {
+				if info.Name() == ".gpt4cli" || info.Name() == ".gpt4cli-dev" {
 					return filepath.SkipDir
 				}
 
@@ -369,7 +369,7 @@ func GetPaths(baseDir, currentDir string) (*ProjectPaths, error) {
 	for path := range allPaths {
 		if _, ok := activePaths[path]; !ok {
 			if ignored != nil && ignored.MatchesPath(path) {
-				ignoredPaths[path] = "plandex"
+				ignoredPaths[path] = "gpt4cli"
 			} else {
 				ignoredPaths[path] = "git"
 			}
@@ -379,24 +379,24 @@ func GetPaths(baseDir, currentDir string) (*ProjectPaths, error) {
 	return &ProjectPaths{
 		ActivePaths:    activePaths,
 		AllPaths:       allPaths,
-		PlandexIgnored: ignored,
+		Gpt4cliIgnored: ignored,
 		IgnoredPaths:   ignoredPaths,
 	}, nil
 }
 
-func GetPlandexIgnore(dir string) (*ignore.GitIgnore, error) {
-	ignorePath := filepath.Join(dir, ".plandexignore")
+func GetGpt4cliIgnore(dir string) (*ignore.GitIgnore, error) {
+	ignorePath := filepath.Join(dir, ".gpt4cliignore")
 
 	if _, err := os.Stat(ignorePath); err == nil {
 		ignored, err := ignore.CompileIgnoreFile(ignorePath)
 
 		if err != nil {
-			return nil, fmt.Errorf("error reading .plandexignore file: %s", err)
+			return nil, fmt.Errorf("error reading .gpt4cliignore file: %s", err)
 		}
 
 		return ignored, nil
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("error checking for .plandexignore file: %s", err)
+		return nil, fmt.Errorf("error checking for .gpt4cliignore file: %s", err)
 	}
 
 	return nil, nil
@@ -407,8 +407,8 @@ func GetParentProjectIdsWithPaths() ([][2]string, error) {
 	currentDir := filepath.Dir(Cwd)
 
 	for currentDir != "/" {
-		plandexDir := findPlandex(currentDir)
-		projectSettingsPath := filepath.Join(plandexDir, "project.json")
+		gpt4cliDir := findGpt4cli(currentDir)
+		projectSettingsPath := filepath.Join(gpt4cliDir, "project.json")
 		if _, err := os.Stat(projectSettingsPath); err == nil {
 			bytes, err := os.ReadFile(projectSettingsPath)
 			if err != nil {
@@ -462,8 +462,8 @@ func GetChildProjectIdsWithPaths(ctx context.Context) ([][2]string, error) {
 		}
 
 		if info.IsDir() && path != Cwd {
-			plandexDir := findPlandex(path)
-			projectSettingsPath := filepath.Join(plandexDir, "project.json")
+			gpt4cliDir := findGpt4cli(path)
+			projectSettingsPath := filepath.Join(gpt4cliDir, "project.json")
 			if _, err := os.Stat(projectSettingsPath); err == nil {
 				bytes, err := os.ReadFile(projectSettingsPath)
 				if err != nil {
@@ -534,12 +534,12 @@ func GetBaseDirForFilePaths(paths []string) string {
 	return baseDir
 }
 
-func findPlandex(baseDir string) string {
+func findGpt4cli(baseDir string) string {
 	var dir string
-	if os.Getenv("PLANDEX_ENV") == "development" {
-		dir = filepath.Join(baseDir, ".plandex-dev")
+	if os.Getenv("GPT4CLI_ENV") == "development" {
+		dir = filepath.Join(baseDir, ".gpt4cli-dev")
 	} else {
-		dir = filepath.Join(baseDir, ".plandex")
+		dir = filepath.Join(baseDir, ".gpt4cli")
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		return dir

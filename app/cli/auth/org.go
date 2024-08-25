@@ -2,10 +2,10 @@ package auth
 
 import (
 	"fmt"
-	"plandex/term"
+	"gpt4cli/term"
 	"strings"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func resolveOrgAuth(orgs []*shared.Org) (string, string, error) {

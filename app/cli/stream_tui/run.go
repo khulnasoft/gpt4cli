@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"plandex/term"
+	"gpt4cli/term"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 var ui *tea.Program

@@ -2,11 +2,11 @@ package changes_tui
 
 import (
 	"fmt"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 var program *tea.Program

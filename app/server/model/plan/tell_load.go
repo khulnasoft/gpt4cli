@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	"plandex-server/model"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/model"
+	"gpt4cli-server/types"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

@@ -1,9 +1,9 @@
 package types
 
 import (
-	"plandex-server/db"
+	"gpt4cli-server/db"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func HasPendingBuilds(planDescs []*db.ConvoMessageDescription) bool {

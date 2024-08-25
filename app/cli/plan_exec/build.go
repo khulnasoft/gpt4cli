@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"plandex/api"
-	"plandex/fs"
-	"plandex/stream"
-	streamtui "plandex/stream_tui"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/fs"
+	"gpt4cli/stream"
+	streamtui "gpt4cli/stream_tui"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func Build(params ExecParams, buildBg bool) (bool, error) {

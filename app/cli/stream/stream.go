@@ -2,10 +2,10 @@ package stream
 
 import (
 	"log"
-	streamtui "plandex/stream_tui"
-	"plandex/types"
+	streamtui "gpt4cli/stream_tui"
+	"gpt4cli/types"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 var OnStreamPlan types.OnStreamPlan = func(params types.OnStreamPlanParams) {

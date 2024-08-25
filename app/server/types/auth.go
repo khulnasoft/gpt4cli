@@ -2,7 +2,7 @@ package types
 
 import (
 	"log"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 )
 
 type ServerAuth struct {

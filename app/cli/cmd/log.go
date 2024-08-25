@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 	"regexp"
 	"time"
 
@@ -32,8 +32,7 @@ func runLog(cmd *cobra.Command, args []string) {
 	lib.MustResolveProject()
 
 	if lib.CurrentPlanId == "" {
-		fmt.Println("No current plan")
-		return
+		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
 	term.StartSpinner("")
@@ -51,6 +50,9 @@ func runLog(cmd *cobra.Command, args []string) {
 	}
 
 	term.PageOutput(withLocalTimestamps)
+
+	fmt.Println()
+	term.PrintCmds("", "rewind", "continue", "convo", "convo 1", "convo 2-5")
 
 }
 

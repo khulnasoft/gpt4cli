@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"plandex/fs"
-	"plandex/types"
+	"gpt4cli/fs"
+	"gpt4cli/types"
 )
 
 var Current *types.ClientAuth

@@ -1,9 +1,9 @@
-.plandex/
-.plandex-dev/
+.gpt4cli/
+.gpt4cli-dev/
 .envkey
-plandex
-plandex-dev
-plandex-server
+gpt4cli
+gpt4cli-dev
+gpt4cli-server
 *.exe
 node_modules/
 /tools/

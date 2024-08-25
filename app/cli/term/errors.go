@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func OutputNoOpenAIApiKeyMsgAndExit() {
@@ -79,5 +79,12 @@ func OutputErrorAndExit(msg string, args ...interface{}) {
 func OutputUnformattedErrorAndExit(msg string) {
 	StopSpinner()
 	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
+}
+
+func OutputNoCurrentPlanErrorAndExit() {
+	fmt.Println("🤷‍♂️ No current plan")
+	fmt.Println()
+	PrintCmds("", "new", "cd")
 	os.Exit(1)
 }

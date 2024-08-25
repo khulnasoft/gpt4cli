@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"plandex/types"
+	"gpt4cli/types"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func connectPlanRespStream(body io.ReadCloser, onStream types.OnStreamPlan) {

@@ -5,17 +5,19 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"plandex-server/db"
-	"plandex-server/model"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/model"
+	"gpt4cli-server/types"
 	"strings"
 	"time"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
 const MaxAutoContinueIterations = 100
+const MaxSendRate = 30 * time.Millisecond
+const MaxTellStreamRetries = 4
 
 func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionStream) {
 	defer stream.Close()
@@ -80,8 +82,6 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					return
 				}
 
-				state.onError(fmt.Errorf("stream error: %v", err), true, "", "")
-				return
 			}
 
 			if len(response.Choices) == 0 {
@@ -98,10 +98,13 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 
 			if choice.FinishReason != "" {
 				log.Println("Model stream finished")
+				active.FlushStreamBuffer()
+				time.Sleep(100 * time.Millisecond)
 
 				active.Stream(shared.StreamMessage{
 					Type: shared.StreamMessageDescribing,
 				})
+				active.FlushStreamBuffer()
 
 				err := db.SetPlanStatus(planId, branch, shared.PlanStatusDescribing, "")
 				if err != nil {
@@ -110,21 +113,6 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 				}
 
 				latestSummaryCh := active.LatestSummaryCh
-
-				log.Println("summarize convo")
-				envVar := settings.ModelPack.PlanSummary.BaseModelConfig.ApiKeyEnvVar
-				client := clients[envVar]
-
-				// summarize in the background
-				go summarizeConvo(client, settings.ModelPack.PlanSummary, summarizeConvoParams{
-					planId:       planId,
-					branch:       branch,
-					convo:        convo,
-					summaries:    summaries,
-					userPrompt:   state.userPrompt,
-					currentOrgId: currentOrgId,
-					currentReply: active.CurrentReplyContent,
-				}, active.SummaryCtx)
 
 				var generatedDescription *db.ConvoMessageDescription
 				var shouldContinue bool
@@ -223,7 +211,8 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 						}
 					}()
 
-					assistantMsg, convoCommitMsg, err := state.storeAssistantReply()
+					assistantMsg, convoCommitMsg, err := state.storeAssistantReply() // updates state.convo
+					convo = state.convo
 
 					if err != nil {
 						state.onError(fmt.Errorf("failed to store assistant message: %v", err), true, "", "")
@@ -273,6 +262,22 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					return
 				}
 
+				// summarize convo needs to come *after* the reply is stored in order to correctly summarize the latest message
+				log.Println("summarize convo")
+				envVar := settings.ModelPack.PlanSummary.BaseModelConfig.ApiKeyEnvVar
+				client := clients[envVar]
+
+				// summarize in the background
+				go summarizeConvo(client, settings.ModelPack.PlanSummary, summarizeConvoParams{
+					planId:       planId,
+					branch:       branch,
+					convo:        convo,
+					summaries:    summaries,
+					userPrompt:   state.userPrompt,
+					currentOrgId: currentOrgId,
+					currentReply: active.CurrentReplyContent,
+				}, active.SummaryCtx)
+
 				log.Println("Sending active.CurrentReplyDoneCh <- true")
 
 				active.CurrentReplyDoneCh <- true
@@ -287,7 +292,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 				if req.AutoContinue && shouldContinue && iteration < MaxAutoContinueIterations {
 					log.Println("Auto continue plan")
 					// continue plan
-					execTellPlan(clients, plan, branch, auth, req, iteration+1, "", false, nextTask)
+					execTellPlan(clients, plan, branch, auth, req, iteration+1, "", false, nextTask, 0)
 				} else {
 					var buildFinished bool
 					UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
@@ -443,6 +448,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					userChoice,
 					false,
 					"",
+					0,
 				)
 				return
 			}
@@ -547,6 +553,9 @@ func (state *activeTellStreamState) storeAssistantReply() (*db.ConvoMessage, str
 		ap.StoredReplyIds = append(ap.StoredReplyIds, replyId)
 	})
 
+	convo = append(convo, &assistantMsg)
+	state.convo = convo
+
 	return &assistantMsg, commitMsg, err
 }
 
@@ -565,7 +574,7 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 		return
 	}
 
-	storeDescAndReply := func() {
+	storeDescAndReply := func() error {
 		ctx, cancelFn := context.WithCancel(context.Background())
 
 		repoLockId, err := db.LockRepo(
@@ -582,6 +591,7 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 
 		if err != nil {
 			log.Printf("Error locking repo for plan %s: %v\n", planId, err)
+			return err
 		} else {
 
 			defer func() {
@@ -594,6 +604,7 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 			err := db.GitClearUncommittedChanges(state.currentOrgId, planId)
 			if err != nil {
 				log.Printf("Error clearing uncommitted changes for plan %s: %v\n", planId, err)
+				return err
 			}
 		}
 
@@ -608,6 +619,7 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 				storedMessage = true
 			} else {
 				log.Printf("Error storing assistant message after stream error: %v\n", err)
+				return err
 			}
 		}
 
@@ -625,6 +637,7 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 				storedDesc = true
 			} else {
 				log.Printf("Error storing description after stream error: %v\n", err)
+				return err
 			}
 		}
 
@@ -632,8 +645,11 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 			err := db.GitAddAndCommit(currentOrgId, planId, branch, commitMsg)
 			if err != nil {
 				log.Printf("Error committing after stream error: %v\n", err)
+				return err
 			}
 		}
+
+		return nil
 	}
 
 	storeDescAndReply()

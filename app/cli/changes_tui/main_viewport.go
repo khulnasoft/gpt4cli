@@ -2,7 +2,7 @@ package changes_tui
 
 import (
 	"fmt"
-	"plandex/term"
+	"gpt4cli/term"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fatih/color"

@@ -11,16 +11,16 @@ import (
 	"strings"
 	"time"
 
-	"plandex/api"
-	"plandex/auth"
-	"plandex/format"
-	"plandex/fs"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/format"
+	"gpt4cli/fs"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 	"github.com/xlab/treeprint"
 )

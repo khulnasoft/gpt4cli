@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func GetPlanSettings(plan *Plan, fillDefaultModelPack bool) (*shared.PlanSettings, error) {

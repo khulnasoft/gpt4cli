@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"plandex/types"
+	"gpt4cli/types"
 	"strings"
 	"sync"
 )
@@ -32,7 +32,7 @@ func ParseInputPaths(fileOrDirPaths []string, params *types.LoadContextParams) (
 				}
 
 				if info.IsDir() {
-					if info.Name() == ".git" || strings.Index(info.Name(), ".plandex") == 0 {
+					if info.Name() == ".git" || strings.Index(info.Name(), ".gpt4cli") == 0 {
 						return filepath.SkipDir
 					}
 

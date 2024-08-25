@@ -4,15 +4,15 @@ Use the existing functionality for models and model sets as a guide and follow t
 
 Here are the commands/subcommands I want to add:
 
-`plandex models available` - list all available models, both built-in and custom, in a nicely formatted table (use tablewriter like the other commands)
+`gpt4cli models available` - list all available models, both built-in and custom, in a nicely formatted table (use tablewriter like the other commands)
 
-`plandex models create` - use terminal prompts in a similar way to the 'set-model' command to prompt the user for all necessary values to create a custom model, then call the api function to store it on the server
+`gpt4cli models create` - use terminal prompts in a similar way to the 'set-model' command to prompt the user for all necessary values to create a custom model, then call the api function to store it on the server
 
-`plandex models delete` - prompt the user to choose from a list of custom models to delete 
+`gpt4cli models delete` - prompt the user to choose from a list of custom models to delete 
 
-`plandex model-sets` - list all available model sets, both built-in and user-created
+`gpt4cli model-sets` - list all available model sets, both built-in and user-created
 
-`plandex model-sets create` - use terminal prompts in a similar way to the 'set-model' command to prompt the user for all necessary values to create a model set, then call the api function to store it on the server
+`gpt4cli model-sets create` - use terminal prompts in a similar way to the 'set-model' command to prompt the user for all necessary values to create a model set, then call the api function to store it on the server
 
 Add all the required CLI and server code to make this work. Put the server-side handlers in 'app/server/handlers/models.go'. Create a new file in 'app/server/db/' for the db access functions.
 

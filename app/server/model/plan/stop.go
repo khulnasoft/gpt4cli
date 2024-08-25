@@ -2,7 +2,7 @@ package plan
 
 import (
 	"fmt"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 
 	"github.com/sashabaranov/go-openai"
 )

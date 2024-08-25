@@ -1,7 +1,7 @@
-POSTGRES_PASSWORD=postgres
-PLANDEX_DB=plandex
-PLANDEX_USER=plandex
-PLANDEX_PASSWORD=plandex
+POSTGRES_PASSWORD=gpt4cli
+POSTGRES_USER=gpt4cli
+POSTGRES_DATABASE=gpt4cli
 PGDATA_DIR=/var/lib/postgresql/data
-PLANDEX_DATA_DIR=/var/lib/plandex/data
+GPT4CLI_DATA_DIR=/var/lib/gpt4cli/data # local path to store gpt4cli data (outside container)
 GOENV=development
+GPT4CLI_BASE_DIR=/gpt4cli-server # container path to store gpt4cli data (inside container)

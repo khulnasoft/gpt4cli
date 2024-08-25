@@ -3,9 +3,9 @@ package types
 import (
 	"fmt"
 	"log"
-	"plandex-server/db"
+	"gpt4cli-server/db"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func (ap *ActivePlan) PendingBuildsByPath(orgId, userId string, convoMessagesArg []*db.ConvoMessage) (map[string][]*ActiveBuild, error) {

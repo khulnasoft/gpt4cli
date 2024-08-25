@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func writeApiError(w http.ResponseWriter, apiErr shared.ApiError) {

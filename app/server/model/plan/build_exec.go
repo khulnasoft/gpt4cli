@@ -1,15 +1,17 @@
 package plan
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
-	"plandex-server/db"
-	"plandex-server/model"
-	"plandex-server/model/prompts"
-	"plandex-server/syntax"
-	"plandex-server/types"
+	"gpt4cli-server/db"
+	"gpt4cli-server/model"
+	"gpt4cli-server/model/prompts"
+	"gpt4cli-server/syntax"
+	"gpt4cli-server/types"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -343,12 +345,56 @@ func (fileState *activeBuildStreamFileState) buildFileLineNums() {
 	envVar := config.BaseModelConfig.ApiKeyEnvVar
 	client := clients[envVar]
 
-	stream, err := model.CreateChatCompletionStreamWithRetries(client, activePlan.Ctx, modelReq)
-	if err != nil {
-		log.Printf("Error creating plan file stream for path '%s': %v\n", filePath, err)
-		fileState.onBuildFileError(fmt.Errorf("error creating plan file stream for path '%s': %v", filePath, err))
-		return
+	if config.BaseModelConfig.HasStreamingFunctionCalls {
+		stream, err := model.CreateChatCompletionStreamWithRetries(client, activePlan.Ctx, modelReq)
+		if err != nil {
+			log.Printf("Error creating plan file stream for path '%s': %v\n", filePath, err)
+			fileState.onBuildFileError(fmt.Errorf("error creating plan file stream for path '%s': %v", filePath, err))
+			return
+		}
+
+		go fileState.listenStreamChangesWithLineNums(stream)
+	} else {
+
+		log.Println("request:")
+		log.Println(spew.Sdump(modelReq))
+
+		resp, err := model.CreateChatCompletionWithRetries(client, activePlan.Ctx, modelReq)
+
+		if err != nil {
+			log.Printf("Error building file '%s': %v\n", filePath, err)
+			fileState.onBuildFileError(fmt.Errorf("error building file '%s': %v", filePath, err))
+			return
+		}
+
+		var s string
+		var res types.ChangesWithLineNums
+
+		for _, choice := range resp.Choices {
+			if len(choice.Message.ToolCalls) == 1 &&
+				choice.Message.ToolCalls[0].Function.Name == prompts.ListReplacementsFn.Name {
+				fnCall := choice.Message.ToolCalls[0].Function
+				s = fnCall.Arguments
+				break
+			}
+		}
+
+		if s == "" {
+			log.Println("no ListReplacements function call found in response")
+			fileState.lineNumsRetryOrError(fmt.Errorf("no ListReplacements function call found in response"))
+			return
+		}
+
+		bytes := []byte(s)
+
+		err = json.Unmarshal(bytes, &res)
+		if err != nil {
+			log.Printf("Error unmarshalling build response: %v\n", err)
+			fileState.lineNumsRetryOrError(fmt.Errorf("error unmarshalling build response: %v", err))
+			return
+		}
+
+		fileState.onBuildResult(res)
 	}
 
-	go fileState.listenStreamChangesWithLineNums(stream)
 }

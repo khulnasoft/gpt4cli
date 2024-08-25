@@ -3,11 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"plandex/api"
-	"plandex/auth"
-	"plandex/format"
-	"plandex/lib"
-	"plandex/term"
+	"gpt4cli/api"
+	"gpt4cli/auth"
+	"gpt4cli/format"
+	"gpt4cli/lib"
+	"gpt4cli/term"
 	"strconv"
 
 	"github.com/fatih/color"
@@ -31,8 +31,7 @@ func branches(cmd *cobra.Command, args []string) {
 	lib.MustResolveProject()
 
 	if lib.CurrentPlanId == "" {
-		fmt.Println("🤷‍♂️ No current plan")
-		return
+		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
 	term.StartSpinner("")

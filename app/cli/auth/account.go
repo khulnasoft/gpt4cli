@@ -2,20 +2,20 @@ package auth
 
 import (
 	"fmt"
-	"plandex/term"
-	"plandex/types"
+	"gpt4cli/term"
+	"gpt4cli/types"
 
 	"github.com/fatih/color"
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 const (
-	AuthFreeTrialOption = "Start an anonymous trial on Plandex Cloud (no email required)"
+	AuthFreeTrialOption = "Start an anonymous trial on Gpt4cli Cloud (no email required)"
 	AuthAccountOption   = "Sign in, accept an invite, or create an account"
 )
 
 func promptInitialAuth() error {
-	selected, err := term.SelectFromList("👋 Hey there!\nIt looks like this is your first time using Plandex on this computer.\nWhat would you like to do?", []string{AuthFreeTrialOption, AuthAccountOption})
+	selected, err := term.SelectFromList("👋 Hey there!\nIt looks like this is your first time using Gpt4cli on this computer.\nWhat would you like to do?", []string{AuthFreeTrialOption, AuthAccountOption})
 
 	if err != nil {
 		return fmt.Errorf("error selecting auth option: %v", err)
@@ -134,12 +134,12 @@ func SelectOrSignInOrCreate() error {
 }
 
 const (
-	SignInCloudOption = "Plandex Cloud"
+	SignInCloudOption = "Gpt4cli Cloud"
 	SignInOtherOption = "Another host"
 )
 
 func promptSignInNewAccount() error {
-	selected, err := term.SelectFromList("Use Plandex Cloud or another host?", []string{SignInCloudOption, SignInOtherOption})
+	selected, err := term.SelectFromList("Use Gpt4cli Cloud or another host?", []string{SignInCloudOption, SignInOtherOption})
 
 	if err != nil {
 		return fmt.Errorf("error selecting sign in option: %v", err)

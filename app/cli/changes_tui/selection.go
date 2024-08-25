@@ -3,9 +3,9 @@ package changes_tui
 import (
 	"fmt"
 	"log"
-	"plandex/term"
+	"gpt4cli/term"
 
-	"github.com/plandex/plandex/shared"
+	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 type selectionInfo struct {
