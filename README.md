@@ -1,6 +1,6 @@
 # gpt4cli
 
-<div align="center">
+<div align="">
 
 <p align="">
   <!-- Call to Action Links -->
