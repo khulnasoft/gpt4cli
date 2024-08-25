@@ -72,7 +72,7 @@ const config: Config = {
         },
         {
           label: 'X',
-          href: 'https://x.com/Gpt4cliAI',
+          href: 'https://x.com/khulnasoft',
           position: 'right',
         },
         {
@@ -84,7 +84,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',      
-      copyright: `Copyright © ${new Date().getFullYear()} Gpt4cliAI, Inc.`,
+      copyright: `Copyright © ${new Date().getFullYear()} khulnasoft, Inc.`,
     },
     prism: {
       theme: prismThemes.github,

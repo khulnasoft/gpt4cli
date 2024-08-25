@@ -42,7 +42,7 @@
 
 [![Discord](https://img.shields.io/discord/1214825831973785600.svg?style=flat&logo=discord&label=Discord&refresh=1)](https://discord.gg/khulnasoft)
 [![GitHub Repo stars](https://img.shields.io/github/stars/khulnasoft/gpt4cli?style=social)](https://github.com/khulnasoft/gpt4cli)
-[![Twitter Follow](https://img.shields.io/twitter/follow/Gpt4cliAI?style=social)](https://twitter.com/Gpt4cliAI)
+[![Twitter Follow](https://img.shields.io/twitter/follow/khulnasoft?style=social)](https://twitter.com/khulnasoft)
 
 </div>
 

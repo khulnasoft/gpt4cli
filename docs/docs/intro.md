@@ -76,5 +76,5 @@ Join our growing community and help guide Gpt4cli's development.
 
 - [GitHub](https://github.com/khulnasoft/gpt4cli) - post an [issue](https://github.com/khulnasoft/gpt4cli/issues), start a [discussion](https://github.com/khulnasoft/gpt4cli/discussions), or [fork and contribute.](https://github.com/khulnasoft/gpt4cli/fork)
 - [Discord](https://discord.gg/khulnasoft) - ask for help, give feedback, share your use cases, or just hang out.
-- [X](https://x.com/Gpt4cliAI) - follow for updates on new versions and other AI coding content.
+- [X](https://x.com/khulnasoft) - follow for updates on new versions and other AI coding content.
 - [YouTube](https://www.youtube.com/@gpt4cli-ny5ry) - subscribe to watch various tasks and projects get completed with Gpt4cli.
