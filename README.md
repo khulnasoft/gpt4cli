@@ -40,7 +40,7 @@
 
 <br>
 
-[![Discord](https://img.shields.io/discord/1214825831973785600.svg?style=flat&logo=discord&label=Discord&refresh=1)](https://discord.gg/khulnasoft)
+[![Discord](https://img.shields.io/discord/1144758149232988282.svg?style=flat&logo=discord&label=Discord&refresh=1)](https://discord.gg/khulnasoft)
 [![GitHub Repo stars](https://img.shields.io/github/stars/khulnasoft/gpt4cli?style=social)](https://github.com/khulnasoft/gpt4cli)
 [![Twitter Follow](https://img.shields.io/twitter/follow/khulnasoft?style=social)](https://twitter.com/khulnasoft)
 
@@ -80,13 +80,6 @@
 <br/>
 <br/>
 
-## More examples  🎥
-
-<h4>👉  <a href="https://www.youtube.com/watch?v=0ULjQx25S_Y">Building Pong in C/OpenGL with GPT-4o and Gpt4cli</a></h4>
-
-<h4>👉  <a href="https://www.youtube.com/watch?v=rnlepfh7TN4">Fixing a tricky real-world bug in 5 minutes with Claude Opus 3 and Gpt4cli</a></h4>
-
-<br/>
 
 ## Learn more about Gpt4cli  🧐
 

@@ -70,7 +70,7 @@ You are an AI that analyzes a code file and an AI-generated plan to update the c
 const changesKeyPrompt = `
 'changes': An array of NON-OVERLAPPING changes. Each change is an object with properties: 'summary', 'hasChange', 'old', 'startLineIncludedReasoning', 'startLineIncluded', 'endLineIncludedReasoning', 'endLineIncluded', and 'new'.
 
-Note: all line numbers that are used below are prefixed with 'pdx-', like this 'pdx-5: for i := 0; i < 10; i++ {'. This is to help you identify the line numbers in the file. You *must* include the 'pdx-' prefix in the line numbers in the 'old' property.
+Note: all line numbers that are used below are prefixed with 'g4c-', like this 'g4c-5: for i := 0; i < 10; i++ {'. This is to help you identify the line numbers in the file. You *must* include the 'g4c-' prefix in the line numbers in the 'old' property.
 `
 
 const summaryChangePrompt = `
@@ -94,13 +94,13 @@ The 'old' property is an object with 3 properties: 'entireFile', 'startLineStrin
 
 	'startLineString' is the **entire, exact line** where the section to be replaced begins in the original file, including the line number. Unless it's the first change, 'startLineString' ABSOLUTELY MUST begin with a line number that is HIGHER than both the 'endLineString' of the previous change and the 'startLineString' of the previous change. **The line number and line MUST EXACTLY MATCH a line from the original file.**
 	
-	If the previous change's 'endLineString' starts with 'pdx-75: ', then the current change's 'startLineString' MUST start with 'pdx-76: ' or higher. It MUST NOT be 'pdx-75: ' or lower. If the previous change's 'startLineString' starts with 'pdx-88: ' and the previous change's 'endLineString' is an empty string, then the current change's 'startLineString' MUST start with 'pdx-89: ' or higher. If the previous change's 'startLineString' starts with 'pdx-100: ' and the previous change's 'endLineString' starts with 'pdx-105: ', then the current change's 'startLineString' MUST start with 'pdx-106: ' or higher.
+	If the previous change's 'endLineString' starts with 'g4c-75: ', then the current change's 'startLineString' MUST start with 'g4c-76: ' or higher. It MUST NOT be 'g4c-75: ' or lower. If the previous change's 'startLineString' starts with 'g4c-88: ' and the previous change's 'endLineString' is an empty string, then the current change's 'startLineString' MUST start with 'g4c-89: ' or higher. If the previous change's 'startLineString' starts with 'g4c-100: ' and the previous change's 'endLineString' starts with 'g4c-105: ', then the current change's 'startLineString' MUST start with 'g4c-106: ' or higher.
 	
 	'endLineString' is the **entire, exact line** where the section to be replaced ends in the original file. Pay careful attention to spaces and indentation. 'startLineString' and 'endLineString' must be *entire lines* and *not partial lines*. Even if a line is very long, you must include the entire line, including the line number and all text on the line. **The line number and line MUST EXACTLY MATCH a line from the original file.**
 	
 	**For a single line replacement, 'endLineString' MUST be an empty string.**
 
-	'endLineString' MUST ALWAYS come *after* 'startLineString' in the original file. It must start with a line number that is HIGHER than the 'startLineString' line number. If 'startLineString' starts with 'pdx-22: ', then 'endLineString' MUST either be an empty string (for a single line replacement) or start with 'pdx-23: ' or higher (for a multi-line replacement).	
+	'endLineString' MUST ALWAYS come *after* 'startLineString' in the original file. It must start with a line number that is HIGHER than the 'startLineString' line number. If 'startLineString' starts with 'g4c-22: ', then 'endLineString' MUST either be an empty string (for a single line replacement) or start with 'g4c-23: ' or higher (for a multi-line replacement).	
 
 	If 'hasChange' is false, both 'startLineString' and 'endLineString' must be empty strings. If 'hasChange' is true, 'startLineString' and 'endLineString' must be valid strings that exactly match lines from the original file. If 'hasChange' is true, 'startLineString' and 'endLineString' MUST NEVER be empty strings.
 
@@ -200,8 +200,8 @@ func getListChangesLineNumsPrompt() string {
   {
     summary: "Fix syntax error in loop body.",
    	old: {
-      startLineString: "pdx-5: for i := 0; i < 10; i++ { ",
-      endLineString: "pdx-7: }",
+      startLineString: "g4c-5: for i := 0; i < 10; i++ { ",
+      endLineString: "g4c-7: }",
     },
     new: "for i := 0; i < 10; i++ {\n  execQuery()\n  }\n  }\n}",
   }
@@ -261,8 +261,8 @@ func getFixChangesLineNumsPrompt() string {
   {
     summary: "Fix syntax error in loop body.",
     old: {
-      startLineString: "pdx-5: for i := 0; i < 10; i++ { ",
-      endLineString: "pdx-7: }",
+      startLineString: "g4c-5: for i := 0; i < 10; i++ { ",
+      endLineString: "g4c-7: }",
     },
     new: "for i := 0; i < 10; i++ {\n  execQuery()\n  }\n  }\n}",
   }

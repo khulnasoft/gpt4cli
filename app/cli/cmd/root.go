@@ -36,7 +36,7 @@ func Execute() {
 
 		color.New(color.Bold, color.BgGreen, color.FgHiWhite).Println(" Usage ")
 		color.New(color.Bold).Println("  gpt4cli [command] [flags]")
-		color.New(color.Bold).Println("  pdx [command] [flags]")
+		color.New(color.Bold).Println("  g4c [command] [flags]")
 		fmt.Println()
 
 		color.New(color.Bold, color.BgGreen, color.FgHiWhite).Println(" Help ")

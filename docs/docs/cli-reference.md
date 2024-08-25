@@ -11,7 +11,7 @@ All Gpt4cli CLI commands and their options.
 
 ```bash
 gpt4cli [command] [flags]
-pdx [command] [flags] # 'pdx' is an alias for 'gpt4cli'
+g4c [command] [flags] # 'g4c' is an alias for 'gpt4cli'
 ```
 
 ## Help
@@ -20,7 +20,7 @@ Built-in help.
 
 ```bash
 gpt4cli help
-pdx h # alias
+g4c h # alias
 ```
 
 `--all/-a`: List all commands.
@@ -54,7 +54,7 @@ Includes full details on plans in current directory. Also includes names of plan
 gpt4cli plans
 gpt4cli plans --archived # list archived plans only
 
-pdx pl # alias
+g4c pl # alias
 ```
 
 `--archived/-a`: List archived plans only.
@@ -65,7 +65,7 @@ Show current plan. Output includes when the plan was last updated and created, t
 
 ```bash
 gpt4cli current
-pdx cu # alias
+g4c cu # alias
 ```
 
 ### cd
@@ -91,7 +91,7 @@ gpt4cli delete-plan # select from a list of plans
 gpt4cli delete-plan some-plan # by name
 gpt4cli delete-plan 4 # by index in `gpt4cli plans`
 
-pdx dp # alias
+g4c dp # alias
 ```
 
 With no arguments, Gpt4cli prompts you with a list of plans to select from.
@@ -120,7 +120,7 @@ gpt4cli archive # select from a list of plans
 gpt4cli archive some-plan # by name
 gpt4cli archive 4 # by index in `gpt4cli plans`
 
-pdx arc # alias
+g4c arc # alias
 ```
 
 With no arguments, Gpt4cli prompts you with a list of plans to select from.
@@ -135,7 +135,7 @@ Unarchive a plan.
 gpt4cli unarchive # select from a list of archived plans
 gpt4cli unarchive some-plan # by name
 gpt4cli unarchive 4 # by index in `gpt4cli plans --archived`
-pdx unarc # alias
+g4c unarc # alias
 ```
 
 ## Context
@@ -155,7 +155,7 @@ npm test | gpt4cli load # loads the output of `npm test`
 gpt4cli load -n 'add logging statements to all the code you generate.' # load a note into context
 gpt4cli load ui-mockup.png # load an image into context
 
-pdx l component.ts # alias
+g4c l component.ts # alias
 ```
 
 `--recursive/-r`: Load an entire directory and all its subdirectories.
@@ -198,7 +198,7 @@ Update any outdated context.
 
 ```bash
 gpt4cli update
-pdx u # alias
+g4c u # alias
 ```
 
 ### clear
@@ -220,7 +220,7 @@ gpt4cli tell -f prompt.txt # from file
 gpt4cli tell # open vim to write prompt
 gpt4cli tell "add a cancel button to the left of the submit button" # inline
 
-pdx t # alias
+g4c t # alias
 ```
 
 `--file/-f`: File path containing prompt.
@@ -238,7 +238,7 @@ Continue the plan.
 ```bash
 gpt4cli continue
 
-pdx c # alias
+g4c c # alias
 ```
 
 `--stop/-s`: Stop after a single model response (don't auto-continue).
@@ -253,7 +253,7 @@ Build any unbuilt pending changes from the plan conversation.
 
 ```bash
 gpt4cli build
-pdx b # alias
+g4c b # alias
 ```
 
 `--bg`: Build in the background.
@@ -282,7 +282,7 @@ Apply pending changes to project files.
 
 ```bash
 gpt4cli apply
-pdx ap # alias
+g4c ap # alias
 ```
 
 `--yes/-y`: Skip confirmation.
@@ -296,7 +296,7 @@ gpt4cli reject file.ts # one file
 gpt4cli reject file.ts another-file.ts # multiple files
 gpt4cli reject --all # all pending files
 
-pdx rj file.ts # alias
+g4c rj file.ts # alias
 ```
 
 `--all/-a`: Reject all pending files.
@@ -359,7 +359,7 @@ List plan branches. Output includes index, name, when the branch was last update
 
 ```bash
 gpt4cli branches
-pdx br # alias
+g4c br # alias
 ```
 
 ### checkout
@@ -370,7 +370,7 @@ Checkout or create a branch.
 gpt4cli checkout # select from a list of branches or prompt to create a new branch
 gpt4cli checkout some-branch # checkout by name or create a new branch with that name
 
-pdx co # alias
+g4c co # alias
 ```
 
 ### delete-branch
@@ -382,7 +382,7 @@ gpt4cli delete-branch # select from a list of branches
 gpt4cli delete-branch some-branch # by name
 gpt4cli delete-branch 4 # by index in `gpt4cli branches`
 
-pdx db # alias
+g4c db # alias
 ```
 
 With no arguments, Gpt4cli prompts you with a list of branches to select from.

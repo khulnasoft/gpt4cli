@@ -37,7 +37,7 @@ GPT4CLI_API_HOST= # Defaults to http://localhost:8080 if GPT4CLI_ENV is developm
 GPT4CLI_OUT_DIR=/usr/local/bin # Where the development binary should be output when using dev.sh
 GPT4CLI_DEV_CLI_OUT_DIR=/usr/local/bin # Where the development binary should be output when using dev.sh
 GPT4CLI_DEV_CLI_NAME=gpt4cli-dev # The name of the development binary when using dev.sh
-GPT4CLI_DEV_CLI_ALIAS=pdxd # The alias for the development binary when using dev.sh
+GPT4CLI_DEV_CLI_ALIAS=g4cd # The alias for the development binary when using dev.sh
 GOPATH= # This should be already set to your Go folder if you've installed Golang.
 ```
 
