@@ -93,7 +93,7 @@ func extractLineNumber(line string) (int, error) {
 
 	// Remove the colon from the line number part
 	lineNumberStr := strings.TrimSuffix(parts[0], ":")
-	lineNumberStr = strings.TrimPrefix(lineNumberStr, "pdx-")
+	lineNumberStr = strings.TrimPrefix(lineNumberStr, "g4c-")
 	if lineNumberStr == "" {
 		return 0, fmt.Errorf("no line number found")
 	}

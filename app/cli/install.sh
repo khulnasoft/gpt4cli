@@ -129,12 +129,12 @@ download_gpt4cli () {
     echo "Gpt4cli is installed in /usr/local/bin"
   fi
 
-  # create 'pdx' alias, but don't ovewrite existing pdx command
-  if [ ! -x "$(command -v pdx)" ]; then
-    echo "creating pdx alias"
+  # create 'g4c' alias, but don't ovewrite existing g4c command
+  if [ ! -x "$(command -v g4c)" ]; then
+    echo "creating g4c alias"
     LOC=$(which gpt4cli)
     BIN_DIR=$(dirname $LOC)
-    error_msg=$(ln -s "$LOC" "$BIN_DIR/pdx" 2>&1) || { echo "Failed to create 'pdx' alias for Gpt4cli. Error: $error_msg. Please create it manually if needed."; }
+    error_msg=$(ln -s "$LOC" "$BIN_DIR/g4c" 2>&1) || { echo "Failed to create 'g4c' alias for Gpt4cli. Error: $error_msg. Please create it manually if needed."; }
   fi
 }
 

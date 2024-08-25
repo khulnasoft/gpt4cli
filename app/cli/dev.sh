@@ -2,7 +2,7 @@
 
 OUT="${GPT4CLI_DEV_CLI_OUT_DIR:-/usr/local/bin}"
 NAME="${GPT4CLI_DEV_CLI_NAME:-gpt4cli-dev}"
-ALIAS="${GPT4CLI_DEV_CLI_ALIAS:-pdxd}"
+ALIAS="${GPT4CLI_DEV_CLI_ALIAS:-g4cd}"
 
 # Double quote to prevent globbing and word splitting.
 go build -o "$NAME" &&

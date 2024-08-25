@@ -115,7 +115,7 @@ func PrintCustomHelp(all bool) {
 
 	color.New(color.Bold, color.BgGreen, color.FgHiWhite).Fprintln(builder, " Usage ")
 	color.New(color.Bold).Fprintln(builder, "  gpt4cli [command] [flags]")
-	color.New(color.Bold).Fprintln(builder, "  pdx [command] [flags]")
+	color.New(color.Bold).Fprintln(builder, "  g4c [command] [flags]")
 	fmt.Fprintln(builder)
 
 	color.New(color.Bold, color.BgGreen, color.FgHiWhite).Fprintln(builder, " Help ")

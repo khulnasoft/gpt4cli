@@ -156,19 +156,19 @@ You can get help on the CLI with `gpt4cli help` and a list of all commands with 
 
 ## Aliases
 
-You can use the `pdx` alias instead of `gpt4cli` to type a bit less, and most common commands have their own aliases as well.
+You can use the `g4c` alias instead of `gpt4cli` to type a bit less, and most common commands have their own aliases as well.
 
 Here are the same commands we went through above using aliases to minimize typing:
 
 ```bash
-pdx new
-pdx l some-file.ts another-file.ts # load
-pdx t -f prompt.txt # tell
-pdx diff
-pdx ch # changes
-pdx log
-pdx rw e7e06e0 # rewind
-pdx c # continue
-pdx rj components/charts.tsx # reject
-pdx ap # apply
+g4c new
+g4c l some-file.ts another-file.ts # load
+g4c t -f prompt.txt # tell
+g4c diff
+g4c ch # changes
+g4c log
+g4c rw e7e06e0 # rewind
+g4c c # continue
+g4c rj components/charts.tsx # reject
+g4c ap # apply
 ```

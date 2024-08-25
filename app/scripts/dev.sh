@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Detect zsh and trigger it if its the shell
+# Detect zsh and trigger it if it's the shell
 if [ -n "$ZSH_VERSION" ]; then
   # shell is zsh
   echo "Detected zsh"
@@ -18,12 +18,12 @@ if ! [ -x "$(command -v reflex)" ]; then
 
   # Check if the $GOPATH is empty
   if [ -z "$GOPATH" ]; then
-    echo "Error: $GOPATH is not set. Please set it to continue..." >&2
+    echo "Error: \$GOPATH is not set. Please set it to continue..." >&2
     exit 1
   fi
 
   echo 'Error: reflex is not installed. Installing it now...' >&2
-  go get -u github.com/cespare/reflex
+  go install github.com/cespare/reflex@latest
 fi
 
 terminate() {
@@ -41,11 +41,17 @@ cd ../
 echo "PWD:"
 pwd
 
-reflex -r '^(cli|shared)/.*\.(go|mod|sum)$' -- sh -c 'cd cli && ./dev.sh' &
-pid1=$!
-
-reflex -r '^(server|shared)/.*\.(go|mod|sum)$' -s -- sh -c 'cd server && go build && ./gpt4cli-server' &
-pid2=$!
+# Use reflex if it's installed, or exit with an error
+if command -v reflex &> /dev/null; then
+  reflex -r '^(cli|shared)/.*\.(go|mod|sum)$' -- sh -c 'cd cli && ./dev.sh' &
+  pid1=$!
+  
+  reflex -r '^(server|shared)/.*\.(go|mod|sum)$' -s -- sh -c 'cd server && go build && ./gpt4cli-server' &
+  pid2=$!
+else
+  echo "Error: reflex command not found." >&2
+  exit 1
+fi
 
 wait $pid1
 wait $pid2

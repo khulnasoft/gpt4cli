@@ -48,7 +48,7 @@ This creates watchers with `reflex` to rebuild both the server and the CLI when 
 
 The server runs on port 8080 by default.
 
-After each build, the CLI is copied to `/usr/local/bin/gpt4cli-dev`so you can use it with just `gpt4cli-dev` in any directory. A `pdxd` alias is also created. Note the difference from the `gpt4cli` binary and `pdx` aliases which are installed for production usage—aliases are used for development to avoid overwriting the production install.
+After each build, the CLI is copied to `/usr/local/bin/gpt4cli-dev`so you can use it with just `gpt4cli-dev` in any directory. A `g4cd` alias is also created. Note the difference from the `gpt4cli` binary and `g4c` aliases which are installed for production usage—aliases are used for development to avoid overwriting the production install.
 
 The output directory can be changed with the `GPT4CLI_DEV_CLI_OUT_DIR` environment variable. The binary name can be changed with `GPT4CLI_DEV_CLI_NAME` and the alias can be changed with `GPT4CLI_DEV_CLI_ALIAS`.
 
