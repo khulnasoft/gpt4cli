@@ -56,11 +56,6 @@
   </a> -->
 
 </p>
-
-<br>
-
-<h3 align="">AI driven development in your terminal.<br/>Build entire features and apps with a robust workflow.</h3>
-
 <br/>
 <br/>
 
