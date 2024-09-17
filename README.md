@@ -73,10 +73,6 @@
 <!-- Vimeo link is nicer on mobile than embedded video... downside is it navigates to vimeo in same tab (no way to add target=_blank) -->
 <!-- https://github.com/khulnasoft/gpt4cli/assets/545350/c2ee3bcd-1512-493f-bdd5-e3a4ca534a36 -->
 
-<a href="https://player.vimeo.com/video/926634577">
-  <img src="images/gpt4cli-intro-vimeo.png" alt="Gpt4cli intro video" width="100%"/>
-</a>
-
 <br/>
 <br/>
 
