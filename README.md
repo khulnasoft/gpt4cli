@@ -57,12 +57,6 @@
 
 </p>
 
-<br />
-
-<div align="">
-<a href="https://trendshift.io/repositories/8994" target="_blank"><img src="https://trendshift.io/api/badge/repositories/8994" alt="khulnasoft%2Fgpt4cli | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</div>
-
 <br>
 
 <h3 align="">AI driven development in your terminal.<br/>Build entire features and apps with a robust workflow.</h3>
