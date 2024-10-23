@@ -15,7 +15,9 @@ When Gpt4cli has finished with your task, you can review the proposed changes wi
 gpt4cli diff
 ```
 
-Or you can view them in Gpt4cli's changes TUI:
+`--plain/-p`: Outputs the conversation in plain text with no ANSI codes.
+
+ You can also view them in Gpt4cli's changes TUI:
 
 ```bash
 gpt4cli changes
