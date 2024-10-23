@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -13,6 +14,9 @@ func init() {
 	if err != nil {
 		panic(fmt.Errorf("error getting user home dir: %v", err))
 	}
+	log.Println("Gpt4cli server home dir:", home)
+	log.Println("os.Getenv(GPT4CLI_BASE_DIR):", os.Getenv("GPT4CLI_BASE_DIR"))
+	log.Println("GOENV:", os.Getenv("GOENV"))
 
 	BaseDir = os.Getenv("GPT4CLI_BASE_DIR")
 	if BaseDir == "" {
@@ -22,6 +26,7 @@ func init() {
 			BaseDir = "/gpt4cli-server"
 		}
 	}
+	log.Println("Gpt4cli server BaseDir:", BaseDir)
 }
 
 func InitPlan(orgId, planId string) error {
