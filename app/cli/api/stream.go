@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"gpt4cli/types"
 	"io"
 	"log"
-	"gpt4cli/types"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func connectPlanRespStream(body io.ReadCloser, onStream types.OnStreamPlan) {

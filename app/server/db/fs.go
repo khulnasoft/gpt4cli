@@ -14,11 +14,13 @@ func init() {
 	if err != nil {
 		panic(fmt.Errorf("error getting user home dir: %v", err))
 	}
+
 	log.Println("Gpt4cli server home dir:", home)
 	log.Println("os.Getenv(GPT4CLI_BASE_DIR):", os.Getenv("GPT4CLI_BASE_DIR"))
 	log.Println("GOENV:", os.Getenv("GOENV"))
 
 	BaseDir = os.Getenv("GPT4CLI_BASE_DIR")
+
 	if BaseDir == "" {
 		if os.Getenv("GOENV") == "development" {
 			BaseDir = filepath.Join(home, "gpt4cli-server")
@@ -26,6 +28,7 @@ func init() {
 			BaseDir = "/gpt4cli-server"
 		}
 	}
+
 	log.Println("Gpt4cli server BaseDir:", BaseDir)
 }
 

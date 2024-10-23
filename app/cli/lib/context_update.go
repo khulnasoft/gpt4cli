@@ -4,20 +4,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
-	"os"
 	"gpt4cli/api"
 	"gpt4cli/fs"
 	"gpt4cli/term"
 	"gpt4cli/types"
 	"gpt4cli/url"
+	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/fatih/color"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/olekukonko/tablewriter"
-	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func MustCheckOutdatedContext(quiet bool, maybeContexts []*shared.Context) (contextOutdated, updated bool) {

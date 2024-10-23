@@ -2,9 +2,9 @@ package lib
 
 import (
 	"fmt"
+	"gpt4cli/types"
 	"os"
 	"path/filepath"
-	"gpt4cli/types"
 	"strings"
 	"sync"
 )

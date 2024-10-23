@@ -2,15 +2,15 @@ package handlers
 
 import (
 	"fmt"
+	"gpt4cli-server/db"
+	"gpt4cli-server/host"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"gpt4cli-server/db"
-	"gpt4cli-server/host"
 	"time"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func proxyActivePlanMethod(w http.ResponseWriter, r *http.Request, planId, branch, method string) {

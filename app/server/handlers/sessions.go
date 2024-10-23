@@ -4,14 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"gpt4cli-server/db"
+	"gpt4cli-server/email"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
-	"gpt4cli-server/email"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func CreateEmailVerificationHandler(w http.ResponseWriter, r *http.Request) {

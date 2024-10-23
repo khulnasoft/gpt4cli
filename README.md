@@ -1,8 +1,17 @@
-# gpt4cli
+<h1 align="center">
+ <a href="https://gpt4cli.khulnasoft.com">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/gpt4cli-logo-dark.png"/>
+    <source media="(prefers-color-scheme: light)" srcset="images/gpt4cli-logo-light.png"/>
+    <img width="400" src="images/gpt4cli-logo-dark-bg.png"/>
+ </a>
+ <br />
+</h1>
+<br />
 
-<div align="">
+<div align="center">
 
-<p align="">
+<p align="center">
   <!-- Call to Action Links -->
   <a href="#install">
     <b>30-Second Install</b>
@@ -12,7 +21,7 @@
     <b>Website</b>
   </a>
    · 
-  <a href="https://gpt4cli.khulnasoft.com/">
+  <a href="https://docs.gpt4cli.khulnasoft.com/">
     <b>Docs</b>
   </a>
    · 
@@ -20,7 +29,7 @@
     <b>Examples</b>
   </a>
    · 
-  <a href="https://gpt4cli.khulnasoft.com/hosting/self-hosting">
+  <a href="https://docs.gpt4cli.khulnasoft.com/hosting/self-hosting">
     <b>Self-Hosting</b>
   </a>
    <!-- · 
@@ -40,13 +49,13 @@
 
 <br>
 
-[![Discord](https://img.shields.io/discord/1144758149232988282.svg?style=flat&logo=discord&label=Discord&refresh=1)](https://discord.gg/khulnasoft)
+[![Discord](https://img.shields.io/discord/1214825831973785600.svg?style=flat&logo=discord&label=Discord&refresh=1)](https://discord.gg/khulnasoft)
 [![GitHub Repo stars](https://img.shields.io/github/stars/khulnasoft/gpt4cli?style=social)](https://github.com/khulnasoft/gpt4cli)
-[![Twitter Follow](https://img.shields.io/twitter/follow/khulnasoft?style=social)](https://twitter.com/khulnasoft)
+[![Twitter Follow](https://img.shields.io/twitter/follow/KhulnaSoft?style=social)](https://twitter.com/KhulnaSoft)
 
 </div>
 
-<p align="">
+<p align="center">
   <!-- Badges -->
 <a href="https://github.com/khulnasoft/gpt4cli/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a> <a href="https://github.com/khulnasoft/gpt4cli/releases?q=cli"><img src="https://img.shields.io/github/v/release/khulnasoft/gpt4cli?filter=cli*" alt="Release" /></a>
 <a href="https://github.com/khulnasoft/gpt4cli/releases?q=server"><img src="https://img.shields.io/github/v/release/khulnasoft/gpt4cli?filter=server*" alt="Release" /></a>
@@ -56,22 +65,44 @@
   </a> -->
 
 </p>
+
+<br />
+
+<div align="center">
+<a href="https://trendshift.io/repositories/8994" target="_blank"><img src="https://trendshift.io/api/badge/repositories/8994" alt="khulnasoft-lab%2Fgpt4cli | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+</div>
+
+<br>
+
+<h3 align="center">AI driven development in your terminal.<br/>Build entire features and apps with a robust workflow.</h3>
+
 <br/>
 <br/>
 
 <!-- Vimeo link is nicer on mobile than embedded video... downside is it navigates to vimeo in same tab (no way to add target=_blank) -->
 <!-- https://github.com/khulnasoft/gpt4cli/assets/545350/c2ee3bcd-1512-493f-bdd5-e3a4ca534a36 -->
 
+<a href="https://player.vimeo.com/video/926634577">
+  <img src="images/gpt4cli-intro-vimeo.png" alt="Gpt4cli intro video" width="100%"/>
+</a>
+
 <br/>
 <br/>
 
+## More examples  🎥
+
+<h4>👉  <a href="https://www.youtube.com/watch?v=0ULjQx25S_Y">Building Pong in C/OpenGL with GPT-4o and Gpt4cli</a></h4>
+
+<h4>👉  <a href="https://www.youtube.com/watch?v=rnlepfh7TN4">Fixing a tricky real-world bug in 5 minutes with Claude Opus 3 and Gpt4cli</a></h4>
+
+<br/>
 
 ## Learn more about Gpt4cli  🧐
 
 - [Overview](#overview-)
 - [Install](#install)
 - [Get started](#get-started-)
-- [Docs](https://gpt4cli.khulnasoft.com/)
+- [Docs](https://docs.gpt4cli.khulnasoft.com/)
 - [Build complex software](#build-complex-software-with-llms-)
 - [Why Gpt4cli?](#why-gpt4cli-)
 - [Roadmap](#roadmap-%EF%B8%8F)
@@ -92,12 +123,12 @@
 ## Install  📥
 
 ```bash
-curl -sL https://raw.githubusercontent.com/khulnasoft/gpt4cli/main/app/cli/install.sh | bash
+curl -sL https://gpt4cli.khulnasoft.com/install.sh | bash
 ```
 
 **Note:** Windows is supported via [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). Gpt4cli only works correctly on Windows in the WSL shell. It doesn't work in the Windows CMD prompt or PowerShell.
 
-[More installation options.](https://gpt4cli.khulnasoft.com/install)
+[More installation options.](https://docs.gpt4cli.khulnasoft.com/install)
 
 <br/>
 
@@ -160,13 +191,13 @@ gpt4cli tell "add a new line chart showing the number of foobars over time to co
 
 Gpt4cli will make a plan for your task and then implement that plan in code. **The changes won't yet be applied to your project files.** Instead, they'll accumulate in Gpt4cli's sandbox.
 
-To learn about reviewing changes, iterating on the plan, and applying changes to your project, **[continue with the full quickstart.](https://gpt4cli.khulnasoft.com/quick-start#review-the-changes)**
+To learn about reviewing changes, iterating on the plan, and applying changes to your project, **[continue with the full quickstart.](https://docs.gpt4cli.khulnasoft.com/quick-start#review-the-changes)**
 
 <br/>
 
 ## Docs  🛠️
 
-### [👉  Full documentation.](https://gpt4cli.khulnasoft.com/)
+### [👉  Full documentation.](https://docs.gpt4cli.khulnasoft.com/)
 
 
 <br/>
@@ -228,6 +259,6 @@ Speaking of feedback, feel free to give yours, ask questions, report a bug, or j
 
 Work on tests, evals, prompts, and bug fixes is especially appreciated.
 
-[Here's an overview on setting up a development environment.](https://gpt4cli.khulnasoft.com/development)
+[Here's an overview on setting up a development environment.](https://docs.gpt4cli.khulnasoft.com/development)
 
 

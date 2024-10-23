@@ -6,7 +6,7 @@ import (
 	"gpt4cli/auth"
 	"gpt4cli/term"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 

@@ -3,14 +3,14 @@ package types
 import (
 	"context"
 	"encoding/json"
+	"gpt4cli-server/db"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const MaxStreamRate = 50 * time.Millisecond

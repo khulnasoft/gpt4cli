@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
 	"gpt4cli-server/model/prompts"
+	"log"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"

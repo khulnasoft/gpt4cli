@@ -3,10 +3,10 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"log"
-	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/types"
+	"log"
+	"net/http"
 	"runtime/debug"
 
 	"github.com/gorilla/mux"

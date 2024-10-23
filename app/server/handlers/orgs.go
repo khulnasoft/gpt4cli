@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
-	"gpt4cli-server/hooks"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func ListOrgsHandler(w http.ResponseWriter, r *http.Request) {
@@ -125,19 +125,6 @@ func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error adding org domain users: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-	}
-
-	_, apiErr := hooks.ExecHook(hooks.CreateOrg, hooks.HookParams{
-		User: auth.User,
-		Tx:   tx,
-
-		CreateOrgHookRequestParams: &hooks.CreateOrgHookRequestParams{
-			Org: org,
-		},
-	})
-	if apiErr != nil {
-		writeApiError(w, *apiErr)
-		return
 	}
 
 	err = tx.Commit()

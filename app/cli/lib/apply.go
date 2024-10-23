@@ -2,14 +2,14 @@ package lib
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"gpt4cli/api"
 	"gpt4cli/fs"
 	"gpt4cli/term"
+	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func MustApplyPlan(planId, branch string, autoConfirm bool) {

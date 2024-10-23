@@ -5,7 +5,7 @@ import (
 	"gpt4cli-server/db"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func FormatModelContext(context []*db.Context) (string, int, error) {

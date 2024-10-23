@@ -2,10 +2,10 @@ package changes_tui
 
 import (
 	"fmt"
-	"log"
 	"gpt4cli/term"
+	"log"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 type selectionInfo struct {

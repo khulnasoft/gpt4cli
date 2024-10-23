@@ -2,13 +2,13 @@ package plan
 
 import (
 	"context"
-	"log"
 	"gpt4cli-server/db"
 	"gpt4cli-server/types"
+	"log"
 	"strings"
 	"time"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 var (

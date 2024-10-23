@@ -10,7 +10,7 @@ g4c-9: 	"gpt4cli/term"
 g4c-10: 	"strconv"
 g4c-11: 	"strings"
 g4c-12: 
-g4c-13: 	"github.com/gpt4cli/gpt4cli/shared"
+g4c-13: 	"github.com/khulnasoft/gpt4cli/shared"
 g4c-14: 	"github.com/spf13/cobra"
 g4c-15: )
 g4c-16: 

@@ -17,7 +17,7 @@ gpt4cli diff
 
 `--plain/-p`: Outputs the conversation in plain text with no ANSI codes.
 
- You can also view them in Gpt4cli's changes TUI:
+You can also view them in Gpt4cli's changes TUI:
 
 ```bash
 gpt4cli changes

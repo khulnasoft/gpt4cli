@@ -3,18 +3,18 @@ package plan
 import (
 	"context"
 	"fmt"
-	"log"
-	"math/rand"
 	"gpt4cli-server/db"
 	"gpt4cli-server/syntax"
 	"gpt4cli-server/types"
+	"log"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 type OverlapStrategy int

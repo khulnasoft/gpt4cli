@@ -6,7 +6,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/gpt4cli/gpt4cli/shared v0.0.0-00010101000000-000000000000
 	github.com/pkg/errors v0.9.1
 	github.com/sashabaranov/go-openai v1.24.0
 )
@@ -18,6 +17,7 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/khulnasoft/gpt4cli/shared v0.0.0-00010101000000-000000000000 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
@@ -27,7 +27,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/image v0.18.0 // indirect
+	golang.org/x/image v0.17.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
 )
 
@@ -42,4 +42,4 @@ require (
 	github.com/smacker/go-tree-sitter v0.0.0-20240423010953-8ba036550382
 )
 
-replace github.com/gpt4cli/gpt4cli/shared => ../shared
+replace github.com/khulnasoft/gpt4cli/shared => ../shared

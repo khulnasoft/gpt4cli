@@ -3,9 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"gpt4cli-server/db"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
 )

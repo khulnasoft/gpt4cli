@@ -4,7 +4,7 @@ import (
 	"gpt4cli-server/db"
 	"gpt4cli-server/types"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

@@ -1,6 +1,6 @@
 package lib
 
-import "github.com/gpt4cli/gpt4cli/shared"
+import "github.com/khulnasoft/gpt4cli/shared"
 
 func GetContextLabelAndIcon(contextType shared.ContextType) (string, string) {
 	var icon string

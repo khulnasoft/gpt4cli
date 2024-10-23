@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/format"
 	"gpt4cli/lib"
 	"gpt4cli/term"
+	"os"
 	"strconv"
 
 	"github.com/fatih/color"

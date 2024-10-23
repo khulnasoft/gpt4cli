@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
 	"gpt4cli-server/model/prompts"
+	"log"
+	"net/http"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

@@ -2,11 +2,11 @@ package streamtui
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"gpt4cli/api"
 	"gpt4cli/lib"
 	"gpt4cli/term"
+	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fatih/color"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func (m streamUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

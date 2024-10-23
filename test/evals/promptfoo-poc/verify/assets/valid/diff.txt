@@ -9,7 +9,7 @@ index c90eeb7..90405e7 100644
 +	"strconv"
 +	"strings"
  
- 	"github.com/gpt4cli/gpt4cli/shared"
+ 	"github.com/khulnasoft/gpt4cli/shared"
  	"github.com/spf13/cobra"
  )
  

@@ -3,7 +3,7 @@ package types
 import (
 	"gpt4cli-server/db"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func HasPendingBuilds(planDescs []*db.ConvoMessageDescription) bool {

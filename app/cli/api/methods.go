@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"gpt4cli/types"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli/types"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func (a *Api) StartTrial() (*shared.StartTrialResponse, *shared.ApiError) {
@@ -1079,8 +1079,12 @@ func (a *Api) GetPlanStatus(planId, branch string) (string, *shared.ApiError) {
 	return string(body), nil
 }
 
-func (a *Api) GetPlanDiffs(planId, branch string) (string, *shared.ApiError) {
+func (a *Api) GetPlanDiffs(planId, branch string, plain bool) (string, *shared.ApiError) {
 	serverUrl := fmt.Sprintf("%s/plans/%s/%s/diffs", getApiHost(), planId, branch)
+
+	if plain {
+		serverUrl += "?plain=true"
+	}
 
 	resp, err := authenticatedFastClient.Get(serverUrl)
 	if err != nil {
@@ -1093,7 +1097,7 @@ func (a *Api) GetPlanDiffs(planId, branch string) (string, *shared.ApiError) {
 		apiErr := handleApiError(resp, errorBody)
 		tokenRefreshed, apiErr := refreshTokenIfNeeded(apiErr)
 		if tokenRefreshed {
-			return a.GetPlanDiffs(planId, branch)
+			return a.GetPlanDiffs(planId, branch, plain)
 		}
 		return "", apiErr
 	}

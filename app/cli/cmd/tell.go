@@ -2,15 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/plan_exec"
 	"gpt4cli/term"
+	"os"
+	"os/exec"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 

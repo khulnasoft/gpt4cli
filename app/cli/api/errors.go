@@ -2,12 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"gpt4cli/auth"
 	"log"
 	"net/http"
-	"gpt4cli/auth"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func handleApiError(r *http.Response, errBody []byte) *shared.ApiError {

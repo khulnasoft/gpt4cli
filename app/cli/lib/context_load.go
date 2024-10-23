@@ -5,18 +5,18 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"io"
-	"os"
 	"gpt4cli/api"
 	"gpt4cli/fs"
 	"gpt4cli/term"
 	"gpt4cli/types"
 	"gpt4cli/url"
+	"io"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/fatih/color"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func MustLoadContext(resources []string, params *types.LoadContextParams) {

@@ -1,9 +1,6 @@
 package main
 
 import (
-	"log"
-	"os"
-	"path/filepath"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/cmd"
@@ -11,8 +8,11 @@ import (
 	"gpt4cli/lib"
 	"gpt4cli/plan_exec"
 	"gpt4cli/term"
+	"log"
+	"os"
+	"path/filepath"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func init() {

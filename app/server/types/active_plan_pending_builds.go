@@ -2,10 +2,10 @@ package types
 
 import (
 	"fmt"
-	"log"
 	"gpt4cli-server/db"
+	"log"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func (ap *ActivePlan) PendingBuildsByPath(orgId, userId string, convoMessagesArg []*db.ConvoMessage) (map[string][]*ActiveBuild, error) {

@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/lib/pq"
-	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 const modelStreamHeartbeatInterval = 1 * time.Second

@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/lib/pq"
-	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func GetAccessibleOrgsForUser(user *User) ([]*Org, error) {

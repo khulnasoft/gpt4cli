@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gpt4cli-server/db"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
 	"reflect"
 
 	"github.com/gorilla/mux"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {

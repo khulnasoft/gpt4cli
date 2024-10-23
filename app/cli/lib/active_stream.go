@@ -5,7 +5,7 @@ import (
 	"gpt4cli/api"
 	"gpt4cli/term"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func SelectActiveStream(args []string) (string, string, bool) {
