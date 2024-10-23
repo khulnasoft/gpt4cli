@@ -64,7 +64,9 @@ welcome_gpt4cli () {
 cleanup () {
   echo "Cleaning up..."
   cd "${SCRIPT_DIR}"
-  rm -rf gpt4cli_install_tmp
+  if [[ -d "gpt4cli_install_tmp" ]]; then
+   rm -rf "gpt4cli_install_tmp" || echo "Warning: Failed to remove temporary directory"
+  fi
 }
 
 download_gpt4cli () {
