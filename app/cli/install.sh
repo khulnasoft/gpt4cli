@@ -9,15 +9,6 @@ ARCH=
 VERSION=
 RELEASES_URL="https://github.com/khulnasoft/gpt4cli/releases/download"
 
- # Ensure cleanup happens on exit and on specific signals
-trap cleanup EXIT
-trap cleanup INT TERM
-
-cleanup () {
-  cd "${SCRIPT_DIR}"
-  rm -rf gpt4cli_install_tmp
-}
-
 # Set platform
 case "$(uname -s)" in
  Darwin)
@@ -70,6 +61,14 @@ welcome_gpt4cli () {
   echo ""
 }
 
+cleanup () {
+  echo "Cleaning up..."
+  cd "${SCRIPT_DIR}"
+  if [[ -d "gpt4cli_install_tmp" ]]; then
+   rm -rf "gpt4cli_install_tmp" || echo "Warning: Failed to remove temporary directory"
+  fi
+}
+
 download_gpt4cli () {
   ENCODED_TAG="cli%2Fv${VERSION}"
 
@@ -105,6 +104,7 @@ download_gpt4cli () {
       fi
     else
       echo >&2 'Error: /usr/local/bin does not exist. Create this directory with appropriate permissions, then re-install.'
+      cleanup
       exit 1
     fi
   elif [ "$PLATFORM" == "windows" ]; then
@@ -140,8 +140,8 @@ download_gpt4cli () {
 
 welcome_gpt4cli
 download_gpt4cli
+cleanup
 
 echo "Installation complete. Info:"
 echo ""
 gpt4cli help
-
