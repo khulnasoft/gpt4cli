@@ -6,6 +6,8 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/lipgloss v0.10.0
 	github.com/fatih/color v1.16.0
+	github.com/khulnasoft-lab/survey/v2 v2.3.7
+	github.com/khulnasoft/gpt4cli/shared v0.0.0-00010101000000-000000000000
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.15.2
 	github.com/olekukonko/tablewriter v0.0.5
