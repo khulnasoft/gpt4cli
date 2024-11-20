@@ -5,7 +5,7 @@ import (
 	"gpt4cli/term"
 	"gpt4cli/types"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func ConvertTrial() error {

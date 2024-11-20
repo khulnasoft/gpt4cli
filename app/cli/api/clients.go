@@ -1,11 +1,11 @@
 package api
 
 import (
+	"gpt4cli/auth"
+	"gpt4cli/types"
 	"net"
 	"net/http"
 	"os"
-	"gpt4cli/auth"
-	"gpt4cli/types"
 	"time"
 )
 
@@ -46,7 +46,10 @@ type authenticatedTransport struct {
 
 // RoundTrip executes a single HTTP transaction and adds a custom header
 func (t *authenticatedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	auth.SetAuthHeader(req)
+	err := auth.SetAuthHeader(req)
+	if err != nil {
+		return nil, err
+	}
 	return t.underlyingTransport.RoundTrip(req)
 }
 

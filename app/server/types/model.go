@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 type StreamedFile struct {

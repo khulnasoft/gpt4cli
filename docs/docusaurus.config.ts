@@ -10,7 +10,7 @@ const config: Config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://gpt4cli.khulnasoft.com',
+  url: 'https://docs.gpt4cli.khulnasoft.com',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/',
@@ -72,7 +72,7 @@ const config: Config = {
         },
         {
           label: 'X',
-          href: 'https://x.com/khulnasoft',
+          href: 'https://x.com/KhulnaSoft',
           position: 'right',
         },
         {
@@ -84,7 +84,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',      
-      copyright: `Copyright © ${new Date().getFullYear()} khulnasoft, Inc.`,
+      copyright: `Copyright © ${new Date().getFullYear()} KhulnaSoft, Inc.`,
     },
     prism: {
       theme: prismThemes.github,
@@ -93,9 +93,9 @@ const config: Config = {
 
     algolia: {
       // The application ID provided by Algolia
-      appId: 'DJVI8OYOXE',
+      appId: 'EG57NOYLYX',
       // Public API key: it is safe to commit it
-      apiKey: '0643ab299194d74791f0724b11eb5af1',
+      apiKey: 'a811f8bcdd87a8b3fe7f22a353b968ef',
       indexName: 'gpt4cli',
     }
   } satisfies Preset.ThemeConfig,

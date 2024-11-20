@@ -2,13 +2,13 @@ package plan
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
 	"gpt4cli-server/types"
+	"log"
+	"net/http"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

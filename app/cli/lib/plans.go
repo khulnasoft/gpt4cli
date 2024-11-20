@@ -3,10 +3,10 @@ package lib
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"gpt4cli/fs"
 	"gpt4cli/types"
+	"os"
+	"path/filepath"
 	"sync"
 )
 

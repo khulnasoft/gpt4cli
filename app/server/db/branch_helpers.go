@@ -6,8 +6,8 @@ import (
 	"log"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/lib/pq"
-	"github.com/gpt4cli/gpt4cli/shared"
 )
 
 func CreateBranch(plan *Plan, parentBranch *Branch, name string, tx *sqlx.Tx) (*Branch, error) {

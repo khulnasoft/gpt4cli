@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
-	"gpt4cli-server/types"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func ListOrgsHandler(w http.ResponseWriter, r *http.Request) {

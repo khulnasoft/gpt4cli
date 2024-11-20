@@ -13,7 +13,7 @@
     	"strconv"                                                                 
     	"strings"                                                                 
                                                                               
-    	"github.com/gpt4cli/gpt4cli/shared"                                       
+    	"github.com/khulnasoft/gpt4cli/shared"                                       
     	"github.com/spf13/cobra"                                                  
     )                                                                         
                                                                               

@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"gpt4cli/term"
+	"gpt4cli/version"
 	"io"
 	"io/fs"
 	"log"
@@ -12,8 +14,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"gpt4cli/term"
-	"gpt4cli/version"
 	"runtime"
 	"strings"
 

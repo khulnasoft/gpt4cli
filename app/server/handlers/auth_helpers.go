@@ -3,13 +3,13 @@ package handlers
 import (
 	"encoding/base64"
 	"encoding/json"
-	"log"
-	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/types"
+	"log"
+	"net/http"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func authenticate(w http.ResponseWriter, r *http.Request, requireOrg bool) *types.ServerAuth {

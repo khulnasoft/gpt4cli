@@ -1,11 +1,11 @@
 package stream
 
 import (
-	"log"
 	streamtui "gpt4cli/stream_tui"
 	"gpt4cli/types"
+	"log"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 var OnStreamPlan types.OnStreamPlan = func(params types.OnStreamPlanParams) {

@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 type OnStreamPlanParams struct {
@@ -68,7 +68,7 @@ type ApiClient interface {
 	RejectAllChanges(planId, branch string) *shared.ApiError
 	RejectFile(planId, branch, filePath string) *shared.ApiError
 	RejectFiles(planId, branch string, paths []string) *shared.ApiError
-	GetPlanDiffs(planId, branch string) (string, *shared.ApiError)
+	GetPlanDiffs(planId, branch string, plain bool) (string, *shared.ApiError)
 
 	LoadContext(planId, branch string, req shared.LoadContextRequest) (*shared.LoadContextResponse, *shared.ApiError)
 	UpdateContext(planId, branch string, req shared.UpdateContextRequest) (*shared.UpdateContextResponse, *shared.ApiError)

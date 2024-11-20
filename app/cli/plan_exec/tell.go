@@ -2,16 +2,16 @@ package plan_exec
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/fs"
 	"gpt4cli/stream"
 	streamtui "gpt4cli/stream_tui"
 	"gpt4cli/term"
+	"log"
+	"os"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func TellPlan(

@@ -3,13 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"gpt4cli-server/db"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func StartTrialHandler(w http.ResponseWriter, r *http.Request) {

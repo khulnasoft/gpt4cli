@@ -3,10 +3,10 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"gpt4cli/fs"
 	"gpt4cli/term"
 	"gpt4cli/types"
+	"os"
 )
 
 func MustResolveAuthWithOrg() {

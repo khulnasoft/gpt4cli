@@ -8,7 +8,7 @@ import (
 	"gpt4cli-server/model"
 	"gpt4cli-server/model/prompts"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

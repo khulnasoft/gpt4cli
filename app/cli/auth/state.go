@@ -3,9 +3,9 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"gpt4cli/fs"
 	"gpt4cli/types"
+	"os"
 )
 
 var Current *types.ClientAuth

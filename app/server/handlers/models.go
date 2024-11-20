@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"gpt4cli-server/db"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func CreateCustomModelHandler(w http.ResponseWriter, r *http.Request) {

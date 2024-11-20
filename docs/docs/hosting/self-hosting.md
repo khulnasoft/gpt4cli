@@ -22,7 +22,7 @@ cd gpt4cli/app
 2. Install the Gpt4cli CLI if you haven't already:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/khulnasoft/gpt4cli/main/app/cli/install.sh | bash
+curl -sL https://gpt4cli.khulnasoft.com/install.sh | bash
 ```
 
 3. Then run:

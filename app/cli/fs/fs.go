@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gpt4cli/term"
+	"gpt4cli/types"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"gpt4cli/term"
-	"gpt4cli/types"
 	"strings"
 	"sync"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	ignore "github.com/sabhiram/go-gitignore"
 )
 

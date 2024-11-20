@@ -6,7 +6,7 @@ import (
 	"gpt4cli/term"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 var program *tea.Program

@@ -13,7 +13,7 @@ import (
 	"gpt4cli-server/types"
 
 	"github.com/google/uuid"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

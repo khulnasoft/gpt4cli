@@ -19,8 +19,8 @@ import (
 	"gpt4cli/term"
 
 	"github.com/fatih/color"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/olekukonko/tablewriter"
-	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 	"github.com/xlab/treeprint"
 )
@@ -70,7 +70,8 @@ func listActive() {
 	}()
 
 	go func() {
-		ctx, _ := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
 
 		res, err := fs.GetChildProjectIdsWithPaths(ctx)
 

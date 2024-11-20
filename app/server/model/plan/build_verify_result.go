@@ -1,12 +1,12 @@
 package plan
 
 import (
+	"gpt4cli-server/types"
 	"log"
 	"math/rand"
-	"gpt4cli-server/types"
 	"time"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func (fileState *activeBuildStreamFileState) onVerifyResult(res types.VerifyResult) {

@@ -3,16 +3,16 @@ package lib
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"gpt4cli/api"
 	"gpt4cli/fs"
 	"gpt4cli/term"
 	"gpt4cli/types"
+	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/fatih/color"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 var CurrentProjectId string

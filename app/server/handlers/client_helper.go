@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"log"
-	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
+	"log"
+	"net/http"
 
 	"github.com/sashabaranov/go-openai"
 )

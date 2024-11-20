@@ -3,13 +3,13 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"gpt4cli-server/db"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func ListLogsHandler(w http.ResponseWriter, r *http.Request) {

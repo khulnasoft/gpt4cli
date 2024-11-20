@@ -230,4 +230,3 @@ Work on tests, evals, prompts, and bug fixes is especially appreciated.
 
 [Here's an overview on setting up a development environment.](https://gpt4cli.khulnasoft.com/development)
 
-

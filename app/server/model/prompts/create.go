@@ -3,7 +3,7 @@ package prompts
 import (
 	"fmt"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const SysCreate = Identity + ` A plan is a set of files with an attached context.` +

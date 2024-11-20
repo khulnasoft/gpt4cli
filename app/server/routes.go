@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"gpt4cli-server/handlers"
 	"net/http"
 	"os"
-	"gpt4cli-server/handlers"
 
 	"github.com/gorilla/mux"
 )

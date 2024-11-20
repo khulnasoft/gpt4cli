@@ -3,13 +3,13 @@ package plan
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
 	"gpt4cli-server/model/prompts"
 	"gpt4cli-server/types"
+	"log"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 

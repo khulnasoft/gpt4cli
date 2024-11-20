@@ -2,14 +2,14 @@ package plan
 
 import (
 	"fmt"
+	"gpt4cli-server/types"
 	"log"
 	"math/rand"
-	"gpt4cli-server/types"
 	"sort"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func (fileState *activeBuildStreamFileState) onFixResult(res types.ChangesWithLineNums) {

@@ -6,7 +6,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/gpt4cli/gpt4cli/shared v0.0.0-00010101000000-000000000000
 	github.com/pkg/errors v0.9.1
 	github.com/sashabaranov/go-openai v1.24.0
 )
@@ -38,8 +37,9 @@ require (
 	github.com/gen2brain/beeep v0.0.0-20240112042604-c7bb2cd88fea
 	github.com/golang-migrate/migrate/v4 v4.17.0
 	github.com/jmoiron/sqlx v1.3.5
+	github.com/khulnasoft/gpt4cli/shared v0.0.0-00010101000000-000000000000
 	github.com/lib/pq v1.10.9
 	github.com/smacker/go-tree-sitter v0.0.0-20240423010953-8ba036550382
 )
 
-replace github.com/gpt4cli/gpt4cli/shared => ../shared
+replace github.com/khulnasoft/gpt4cli/shared => ../shared

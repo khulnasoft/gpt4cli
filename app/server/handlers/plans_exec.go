@@ -3,18 +3,18 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"log"
-	"net/http"
-	"os"
 	"gpt4cli-server/db"
 	"gpt4cli-server/host"
 	modelPlan "gpt4cli-server/model/plan"
 	"gpt4cli-server/types"
+	"io"
+	"log"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const TrialMaxReplies = 10

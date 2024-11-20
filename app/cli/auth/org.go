@@ -5,7 +5,7 @@ import (
 	"gpt4cli/term"
 	"strings"
 
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func resolveOrgAuth(orgs []*shared.Org) (string, string, error) {

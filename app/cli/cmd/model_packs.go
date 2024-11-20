@@ -2,16 +2,16 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/term"
+	"os"
 	"strconv"
 
 	"github.com/fatih/color"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/olekukonko/tablewriter"
-	"github.com/gpt4cli/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 

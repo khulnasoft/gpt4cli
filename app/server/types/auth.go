@@ -1,8 +1,8 @@
 package types
 
 import (
-	"log"
 	"gpt4cli-server/db"
+	"log"
 )
 
 type ServerAuth struct {

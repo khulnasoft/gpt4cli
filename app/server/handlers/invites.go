@@ -2,15 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
-	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/email"
 	"gpt4cli-server/types"
+	"log"
+	"net/http"
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/gpt4cli/gpt4cli/shared"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func InviteUserHandler(w http.ResponseWriter, r *http.Request) {
