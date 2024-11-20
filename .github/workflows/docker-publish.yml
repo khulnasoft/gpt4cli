@@ -1,6 +1,7 @@
 name: Build and publish Docker Image if a new Github release was created
 
 on:
+  workflow_dispatch:
   release:
     types: [created]
 
