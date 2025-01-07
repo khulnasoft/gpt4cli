@@ -5,3 +5,4 @@ PGDATA_DIR=/var/lib/postgresql/data
 GPT4CLI_DATA_DIR=/var/lib/gpt4cli/data # local path to store gpt4cli data (outside container)
 GOENV=development
 GPT4CLI_BASE_DIR=/gpt4cli-server # container path to store gpt4cli data (inside container)
+API_HOST= # host of the api server in production mode - defaults to 'http://localhost:8080' in development mode

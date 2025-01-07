@@ -3,106 +3,85 @@ package auth
 import (
 	"fmt"
 	"gpt4cli/term"
-	"gpt4cli/types"
-
-	"github.com/khulnasoft/gpt4cli/shared"
+	"time"
 )
 
-func ConvertTrial() error {
-	email, err := term.GetRequiredUserStringInput("Your email:")
+func ConvertTrial() {
+	openAuthenticatedURL("Opening Gpt4cli Cloud upgrade flow in your browser.", "/settings/billing?upgrade=1&cliUpgrade=1")
 
-	if err != nil {
-		return fmt.Errorf("error prompting email: %v", err)
-	}
-
-	hasAccount, pin, err := verifyEmail(email, "")
-
-	if err != nil {
-		return fmt.Errorf("error verifying email: %v", err)
-	}
-
-	if hasAccount {
-		term.OutputErrorAndExit("Can't convert a trial into an account that already exists")
-	}
-
-	name, err := term.GetUserStringInput("Your name:")
-
-	if err != nil {
-		return fmt.Errorf("error prompting name: %v", err)
-	}
-
-	orgName, err := term.GetRequiredUserStringInput("Org name:")
-
-	if err != nil {
-		return fmt.Errorf("error prompting org name: %v", err)
-	}
-
-	autoAddDomainUsers, err := promptAutoAddUsersIfValid(email)
-
-	if err != nil {
-		return fmt.Errorf("error prompting auto add domain users: %v", err)
-	}
-
+	fmt.Println("\nCommand will continue automatically once you've upgraded...")
+	fmt.Println()
 	term.StartSpinner("")
-	res, apiErr := apiClient.ConvertTrial(shared.ConvertTrialRequest{
-		Email:                 email,
-		Pin:                   pin,
-		UserName:              name,
-		OrgName:               orgName,
-		OrgAutoAddDomainUsers: autoAddDomainUsers,
-	})
+
+	startTime := time.Now()
+	expirationTime := startTime.Add(1 * time.Hour)
+
+	for time.Now().Before(expirationTime) {
+		org, apiErr := apiClient.GetOrgSession()
+
+		if apiErr != nil {
+			term.StopSpinner()
+			term.OutputErrorAndExit("error getting org session: %s", apiErr.Msg)
+		}
+
+		if org != nil && !org.IsTrial {
+			term.StopSpinner()
+			fmt.Println("🚀 Trial upgraded")
+			fmt.Println()
+			return
+		}
+
+		time.Sleep(1500 * time.Millisecond)
+	}
+
 	term.StopSpinner()
-
-	if apiErr != nil {
-		return fmt.Errorf("error converting trial: %v", apiErr)
-	}
-
-	err = setAuth(&types.ClientAuth{
-		ClientAccount: types.ClientAccount{
-			Email:    res.Email,
-			UserId:   res.UserId,
-			UserName: res.UserName,
-			Token:    res.Token,
-			IsCloud:  true,
-			IsTrial:  false,
-		},
-		OrgId:   res.Orgs[0].Id,
-		OrgName: res.Orgs[0].Id,
-	})
-
-	if err != nil {
-		return fmt.Errorf("error setting auth: %v", err)
-	}
-
-	return nil
+	term.OutputErrorAndExit("Timed out waiting for upgrade. Please try again. Email support@gpt4cli.khulnasoft.com if the problem persists.")
 }
 
-func startTrial() error {
-	term.StartSpinner("🌟 Starting trial...")
+func startTrial() {
+	term.StartSpinner("")
+	cliTrialToken, apiErr := apiClient.CreateCliTrialSession()
+	term.StopSpinner()
 
-	res, apiErr := apiClient.StartTrial()
+	if apiErr != nil {
+		term.OutputErrorAndExit("error starting trial: %s", apiErr.Msg)
+	}
+
+	openUnauthenticatedCloudURL(
+		"Opening Gpt4cli Cloud trial flow in your browser.",
+		fmt.Sprintf("/start?cliTrialToken=%s", cliTrialToken),
+	)
+
+	fmt.Println("\nCommand will continue automatically once you've started your trial...")
+	fmt.Println()
+	term.StartSpinner("")
+
+	startTime := time.Now()
+	expirationTime := startTime.Add(1 * time.Hour)
+
+	for time.Now().Before(expirationTime) {
+		cliTrialSession, apiErr := apiClient.GetCliTrialSession(cliTrialToken)
+
+		if apiErr != nil {
+			term.StopSpinner()
+			term.OutputErrorAndExit("error getting cli trial session: %s", apiErr.Msg)
+		}
+
+		if cliTrialSession != nil {
+			// Trial session is valid, break the loop and sign in
+			term.StopSpinner()
+			fmt.Println("🚀 Trial started")
+			fmt.Println()
+			err := handleSignInResponse(cliTrialSession, "")
+			if err != nil {
+				term.OutputErrorAndExit("error signing in after trial started: %s", err)
+			}
+			return
+		}
+
+		time.Sleep(1500 * time.Millisecond)
+	}
 
 	term.StopSpinner()
-	if apiErr != nil {
-		return fmt.Errorf("error starting trial: %v", apiErr.Msg)
-	}
-
-	err := setAuth(&types.ClientAuth{
-		ClientAccount: types.ClientAccount{
-			Email:    res.Email,
-			UserId:   res.UserId,
-			UserName: res.UserName,
-			Token:    res.Token,
-			IsTrial:  true,
-			IsCloud:  true,
-		},
-		OrgId:   res.OrgId,
-		OrgName: res.OrgName,
-	})
-
-	if err != nil {
-		return fmt.Errorf("error setting auth: %v", err)
-	}
-
-	return nil
+	term.OutputErrorAndExit("Timed out waiting for trial to start. Please try again. Email support@gpt4cli.khulnasoft.com if the problem persists.")
 }

@@ -3,16 +3,30 @@ package plan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"gpt4cli-server/db"
+	"gpt4cli-server/hooks"
 	"gpt4cli-server/model"
 	"gpt4cli-server/model/prompts"
+	"gpt4cli-server/types"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
-func genPlanDescription(client *openai.Client, config shared.ModelRoleConfig, planId, branch string, ctx context.Context) (*db.ConvoMessageDescription, error) {
+func (state *activeTellStreamState) genPlanDescription() (*db.ConvoMessageDescription, error) {
+	auth := state.auth
+	plan := state.plan
+	planId := plan.Id
+	branch := state.branch
+	settings := state.settings
+	clients := state.clients
+	config := settings.ModelPack.CommitMsg
+	envVar := config.BaseModelConfig.ApiKeyEnvVar
+	client := clients[envVar]
+
 	activePlan := GetActivePlan(planId, branch)
 	if activePlan == nil {
 		return nil, fmt.Errorf("active plan not found")
@@ -23,9 +37,26 @@ func genPlanDescription(client *openai.Client, config shared.ModelRoleConfig, pl
 		responseFormat = &openai.ChatCompletionResponseFormat{Type: "json_object"}
 	}
 
+	numTokens := prompts.ExtraTokensPerRequest + (prompts.ExtraTokensPerMessage * 2) + prompts.SysDescribeNumTokens + activePlan.NumTokens
+
+	_, apiErr := hooks.ExecHook(hooks.WillSendModelRequest, hooks.HookParams{
+		Auth: auth,
+		Plan: plan,
+		WillSendModelRequestParams: &hooks.WillSendModelRequestParams{
+			InputTokens:  numTokens,
+			OutputTokens: shared.AvailableModelsByName[config.BaseModelConfig.ModelName].DefaultReservedOutputTokens,
+			ModelName:    config.BaseModelConfig.ModelName,
+		},
+	})
+	if apiErr != nil {
+		return nil, errors.New(apiErr.Msg)
+	}
+
+	log.Println("Sending plan description model request")
+
 	descResp, err := model.CreateChatCompletionWithRetries(
 		client,
-		ctx,
+		activePlan.Ctx,
 		openai.ChatCompletionRequest{
 			Model: config.BaseModelConfig.ModelName,
 			Tools: []openai.Tool{
@@ -61,6 +92,8 @@ func genPlanDescription(client *openai.Client, config shared.ModelRoleConfig, pl
 		return nil, err
 	}
 
+	log.Println("Plan description model call complete")
+
 	var descStrRes string
 	var desc shared.ConvoMessageDescription
 
@@ -73,9 +106,45 @@ func genPlanDescription(client *openai.Client, config shared.ModelRoleConfig, pl
 		}
 	}
 
+	var inputTokens int
+	var outputTokens int
+	if descResp.Usage.CompletionTokens > 0 {
+		inputTokens = descResp.Usage.PromptTokens
+		outputTokens = descResp.Usage.CompletionTokens
+	} else {
+		inputTokens = numTokens
+		outputTokens, err = shared.GetNumTokens(descStrRes)
+
+		if err != nil {
+			return nil, fmt.Errorf("error getting num tokens for content: %v", err)
+		}
+	}
+
+	log.Println("Sending DidSendModelRequest hook")
+
+	_, apiErr = hooks.ExecHook(hooks.DidSendModelRequest, hooks.HookParams{
+		Auth: auth,
+		Plan: plan,
+		DidSendModelRequestParams: &hooks.DidSendModelRequestParams{
+			InputTokens:   inputTokens,
+			OutputTokens:  outputTokens,
+			ModelName:     config.BaseModelConfig.ModelName,
+			ModelProvider: config.BaseModelConfig.Provider,
+			ModelPackName: settings.ModelPack.Name,
+			ModelRole:     shared.ModelRoleCommitMsg,
+			Purpose:       "Generated commit message for suggested changes",
+		},
+	})
+
+	if apiErr != nil {
+		return nil, errors.New(apiErr.Msg)
+	}
+
+	log.Println("DidSendModelRequest hook complete")
+
 	if descStrRes == "" {
 		fmt.Println("no describePlan function call found in response")
-		return nil, fmt.Errorf("no describePlan function call found in response")
+		return nil, fmt.Errorf("No describePlan function call found in response. This usually means the model failed to generate a valid response.")
 	}
 
 	descByteRes := []byte(descStrRes)
@@ -92,7 +161,9 @@ func genPlanDescription(client *openai.Client, config shared.ModelRoleConfig, pl
 	}, nil
 }
 
-func GenCommitMsgForPendingResults(client *openai.Client, config shared.ModelRoleConfig, current *shared.CurrentPlanState, ctx context.Context) (string, error) {
+func GenCommitMsgForPendingResults(auth *types.ServerAuth, plan *db.Plan, client *openai.Client, settings *shared.PlanSettings, current *shared.CurrentPlanState, ctx context.Context) (string, error) {
+	config := settings.ModelPack.CommitMsg
+
 	s := ""
 
 	num := 0
@@ -107,6 +178,29 @@ func GenCommitMsgForPendingResults(client *openai.Client, config shared.ModelRol
 		return s, nil
 	}
 
+	content := "Pending changes:\n\n" + s
+
+	contentTokens, err := shared.GetNumTokens(content)
+
+	if err != nil {
+		return "", fmt.Errorf("error getting num tokens for content: %v", err)
+	}
+
+	numTokens := prompts.ExtraTokensPerRequest + (prompts.ExtraTokensPerMessage * 2) + prompts.SysPendingResultsNumTokens + contentTokens
+
+	_, apiErr := hooks.ExecHook(hooks.WillSendModelRequest, hooks.HookParams{
+		Auth: auth,
+		Plan: plan,
+		WillSendModelRequestParams: &hooks.WillSendModelRequestParams{
+			InputTokens:  numTokens,
+			OutputTokens: shared.AvailableModelsByName[config.BaseModelConfig.ModelName].DefaultReservedOutputTokens,
+			ModelName:    config.BaseModelConfig.ModelName,
+		},
+	})
+	if apiErr != nil {
+		return "", errors.New(apiErr.Msg)
+	}
+
 	messages := []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleSystem,
@@ -114,7 +208,7 @@ func GenCommitMsgForPendingResults(client *openai.Client, config shared.ModelRol
 		},
 		{
 			Role:    openai.ChatMessageRoleUser,
-			Content: "Pending changes:\n\n" + s,
+			Content: content,
 		},
 	}
 
@@ -139,7 +233,39 @@ func GenCommitMsgForPendingResults(client *openai.Client, config shared.ModelRol
 		return "", fmt.Errorf("no response from GPT")
 	}
 
-	content := resp.Choices[0].Message.Content
+	commitMsg := resp.Choices[0].Message.Content
 
-	return content, nil
+	var inputTokens int
+	var outputTokens int
+	if resp.Usage.CompletionTokens > 0 {
+		inputTokens = resp.Usage.PromptTokens
+		outputTokens = resp.Usage.CompletionTokens
+	} else {
+		inputTokens = numTokens
+		outputTokens, err = shared.GetNumTokens(commitMsg)
+
+		if err != nil {
+			return "", fmt.Errorf("error getting num tokens for content: %v", err)
+		}
+	}
+
+	_, apiErr = hooks.ExecHook(hooks.DidSendModelRequest, hooks.HookParams{
+		Auth: auth,
+		Plan: plan,
+		DidSendModelRequestParams: &hooks.DidSendModelRequestParams{
+			InputTokens:   inputTokens,
+			OutputTokens:  outputTokens,
+			ModelName:     config.BaseModelConfig.ModelName,
+			ModelProvider: config.BaseModelConfig.Provider,
+			ModelPackName: settings.ModelPack.Name,
+			ModelRole:     shared.ModelRoleCommitMsg,
+			Purpose:       "Generated commit message for pending changes",
+		},
+	})
+
+	if apiErr != nil {
+		return "", errors.New(apiErr.Msg)
+	}
+
+	return commitMsg, nil
 }

@@ -2,10 +2,10 @@ package url
 
 import (
 	"errors"
-	"gpt4cli/term"
 	"io"
 	"net/http"
 	"net/url"
+	"gpt4cli/term"
 	"regexp"
 	"strings"
 	"time"

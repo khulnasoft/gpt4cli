@@ -2,16 +2,17 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/term"
-	"os"
 	"strconv"
+	"strings"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/olekukonko/tablewriter"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -112,6 +113,9 @@ func createCustomModel(cmd *cobra.Command, args []string) {
 			term.OutputErrorAndExit("Error reading base URL: %v", err)
 			return
 		}
+
+		baseUrl = strings.TrimSuffix(baseUrl, "/")
+
 		model.BaseUrl = baseUrl
 	} else {
 		model.BaseUrl = shared.BaseUrlByProvider[model.Provider]
@@ -451,8 +455,7 @@ func renderSettings(settings *shared.PlanSettings) {
 	addModelRow(string(shared.ModelRoleName), modelPack.Namer)
 	addModelRow(string(shared.ModelRoleCommitMsg), modelPack.CommitMsg)
 	addModelRow(string(shared.ModelRoleExecStatus), modelPack.ExecStatus)
-	addModelRow(string(shared.ModelRoleVerifier), modelPack.GetVerifier())
-	addModelRow(string(shared.ModelRoleAutoFix), modelPack.GetAutoFix())
+	addModelRow(string(shared.ModelRoleWholeFileBuilder), modelPack.GetWholeFileBuilder())
 	table.Render()
 
 	fmt.Println()

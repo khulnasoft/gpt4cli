@@ -2,9 +2,9 @@ package streamtui
 
 import (
 	"fmt"
-	"gpt4cli/term"
 	"log"
 	"os"
+	"gpt4cli/term"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,7 +22,8 @@ var prestartAbort bool
 
 func StartStreamUI(prompt string, buildOnly bool) error {
 	if prestartErr != nil {
-		term.OutputErrorAndExit("Server error: " + prestartErr.Msg)
+		log.Println("stream UI - prestart error: ", prestartErr)
+		term.HandleApiError(prestartErr)
 	}
 
 	if prestartAbort {
@@ -64,13 +65,17 @@ func StartStreamUI(prompt string, buildOnly bool) error {
 	}
 
 	if mod.err != nil {
+		log.Println("stream UI - error: ", mod.err)
+
 		fmt.Println()
 		term.OutputErrorAndExit(mod.err.Error())
 	}
 
 	if mod.apiErr != nil {
+		log.Println("stream UI - api error: ", mod.apiErr)
+
 		fmt.Println()
-		term.OutputErrorAndExit("Server error: " + mod.apiErr.Msg)
+		term.HandleApiError(mod.apiErr)
 	}
 
 	if mod.stopped {
@@ -96,8 +101,10 @@ func Quit() {
 		return
 	}
 	mu.Lock()
-	defer mu.Unlock()
-	ui.Quit()
+	if ui != nil {
+		ui.Quit()
+	}
+	mu.Unlock()
 
 	wg.Wait() // Wait for the UI to fully terminate
 
@@ -120,4 +127,18 @@ func Send(msg shared.StreamMessage) {
 	defer mu.Unlock()
 	// log.Printf("sending stream message to UI: %s\n", msg.Type)
 	ui.Send(msg)
+}
+
+func ToggleVisibility(hide bool) {
+	if ui == nil {
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	if hide {
+		ui.Send(tea.ExitAltScreen())
+	} else {
+		ui.Send(tea.EnterAltScreen())
+	}
 }

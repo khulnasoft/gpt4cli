@@ -2,12 +2,13 @@ package plan
 
 import (
 	"fmt"
-	"gpt4cli-server/db"
-	"gpt4cli-server/types"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
@@ -185,9 +186,7 @@ func (state *activeBuildStreamFileState) onFinishBuild() {
 	active := GetActivePlan(planId, branch)
 
 	if active != nil && (active.RepliesFinished || active.BuildOnly) {
-		active.Stream(shared.StreamMessage{
-			Type: shared.StreamMessageFinished,
-		})
+		active.Finish()
 	}
 }
 
@@ -253,7 +252,8 @@ func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanF
 				}
 			}()
 
-			log.Println("Storing plan result")
+			log.Println("Storing plan result", planRes.Path)
+			spew.Dump(planRes)
 
 			err = db.StorePlanResult(planRes)
 			if err != nil {
@@ -266,36 +266,11 @@ func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanF
 				return err
 			}
 
-			log.Println("Plan result stored")
+			// log.Println("Plan result stored", planRes.Path)
 			return nil
 		}()
 
 		if err != nil {
-			return
-		}
-	}
-
-	// if we have a syntax error, fix it if we aren't out of retries
-	if planRes != nil && planRes.WillCheckSyntax && !planRes.SyntaxValid {
-		if planRes.IsFix {
-			if planRes.FixEpoch >= FixSyntaxEpochs-1 {
-				// we're out of retries, just continue on to queue processing
-			} else {
-				fileState.syntaxNumEpoch++
-				fileState.syntaxNumRetry = 0
-				fileState.isFixingSyntax = true
-				fileState.syntaxErrors = planRes.SyntaxErrors
-				fileState.preBuildState = fileState.updated
-				fileState.updated = updated
-				go fileState.fixFileLineNums()
-				return
-			}
-		} else {
-			fileState.isFixingSyntax = true
-			fileState.syntaxErrors = planRes.SyntaxErrors
-			fileState.preBuildState = fileState.updated
-			fileState.updated = updated
-			go fileState.fixFileLineNums()
 			return
 		}
 	}
@@ -329,7 +304,7 @@ func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanF
 	// otherwise:
 	// if this is a verification build or a new file build (new files aren't verified), check if the build is finished and call onFinishBuild if it is
 	// if this is not a verification build, trigger the verification build
-	if activeBuild.IsVerification || fileState.isNewFile || (planRes != nil && !planRes.CanVerify) {
+	if fileState.isNewFile {
 		buildFinished := false
 
 		UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
@@ -347,14 +322,14 @@ func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanF
 			fileState.onFinishBuild()
 		}
 	} else {
+		log.Println("Triggering verification build")
+
 		go fileState.execPlanBuild(&types.ActiveBuild{
-			ReplyId:              activeBuild.ReplyId,
-			FileDescription:      activeBuild.FileDescription,
-			FileContent:          activeBuild.FileContent,
-			Path:                 activeBuild.Path,
-			Idx:                  activeBuild.Idx,
-			IsVerification:       true,
-			ToVerifyUpdatedState: updated,
+			ReplyId:         activeBuild.ReplyId,
+			FileDescription: activeBuild.FileDescription,
+			FileContent:     activeBuild.FileContent,
+			Path:            activeBuild.Path,
+			Idx:             activeBuild.Idx,
 		})
 	}
 

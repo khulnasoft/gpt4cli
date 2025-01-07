@@ -14,11 +14,13 @@ var CmdDesc = map[string][2]string{
 	"rename":       {"", "rename the current plan"},
 	"current":      {"cu", "show current plan"},
 	"cd":           {"", "set current plan by name or index"},
-	"load":         {"l", "load files, dirs, urls, notes, images, or piped data into context"},
-	"tell":         {"t", "describe a task, ask a question, or chat"},
-	"changes":      {"ch", "review pending changes in a TUI"},
+	"load":         {"l", "load files/dirs/urls/notes/images or pipe data into context"},
+	"tell":         {"t", "describe a task to complete"},
+	"chat":         {"ch", "ask a question or chat"},
+	"changes":      {"", "review pending changes in a TUI"},
 	"diff":         {"", "review pending changes in 'git diff' format"},
 	"diff --plain": {"", "review pending changes in 'git diff' format with no color formatting"},
+	"diff --ui":    {"", "review pending changes in a local browser UI"},
 	"summary":      {"", "show the latest summary of the current plan"},
 	// "preview":     {"pv", "preview the plan in a branch"},
 	"apply":     {"ap", "apply pending changes to project files"},
@@ -26,6 +28,7 @@ var CmdDesc = map[string][2]string{
 	"archive":   {"arc", "archive a plan"},
 	"unarchive": {"unarc", "unarchive a plan"},
 	"continue":  {"c", "continue the plan"},
+	"debug":     {"db", "repeatedly run a command and auto-apply fixes until it succeeds"},
 	// "status":      {"s", "show status of the plan"},
 	"rewind":                    {"rw", "rewind to a previous state"},
 	"ls":                        {"", "list everything in context"},
@@ -63,6 +66,13 @@ var CmdDesc = map[string][2]string{
 	"invite":                    {"", "invite a user to join your org"},
 	"revoke":                    {"", "revoke an invite or remove a user from your org"},
 	"users":                     {"", "list users and pending invites in your org"},
+	"credits":                   {"", "show Gpt4cli Cloud credits balance"},
+	"usage":                     {"", "show Gpt4cli Cloud credits transaction log"},
+	"billing":                   {"", "show Gpt4cli Cloud billing settings"},
+	"config":                    {"", "show current plan config"},
+	"set-config":                {"", "update current plan config"},
+	"config default":            {"", "show default config for new plans"},
+	"set-config default":        {"", "update default config for new plans"},
 }
 
 func PrintCmds(prefix string, cmds ...string) {
@@ -131,12 +141,12 @@ func PrintCustomHelp(all bool) {
 	fmt.Fprintln(builder)
 	fmt.Fprintf(builder, "  2 - Load any relevant context with %s\n", color.New(color.Bold, color.BgCyan, color.FgHiWhite).Sprint(" gpt4cli load [file-path-or-url] "))
 	fmt.Fprintln(builder)
-	fmt.Fprintf(builder, "  3 - Describe a task, ask a question, or chat with %s\n", color.New(color.Bold, color.BgCyan, color.FgHiWhite).Sprint(" gpt4cli tell "))
+	fmt.Fprintf(builder, "  3 - Describe a task to complete with %s\n", color.New(color.Bold, color.BgCyan, color.FgHiWhite).Sprint(" gpt4cli tell "))
 	fmt.Fprintln(builder)
 
 	if all {
 		color.New(color.Bold, color.BgMagenta, color.FgHiWhite).Fprintln(builder, " Key Commands ")
-		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiMagenta}, "new", "load", "tell", "changes", "diff", "apply", "reject")
+		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiMagenta}, "new", "load", "tell", "diff", "diff --ui", "apply", "reject", "debug", "chat")
 		fmt.Fprintln(builder)
 
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Plans ")
@@ -144,7 +154,7 @@ func PrintCustomHelp(all bool) {
 		fmt.Fprintln(builder)
 
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Changes ")
-		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "changes", "diff", "diff --plain", "apply", "reject")
+		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "diff", "diff --ui", "diff --plain", "changes", "apply", "reject")
 		fmt.Fprintln(builder)
 
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Context ")
@@ -160,11 +170,15 @@ func PrintCustomHelp(all bool) {
 		fmt.Fprintln(builder)
 
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Control ")
-		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "tell", "continue", "build")
+		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "tell", "continue", "build", "debug", "chat")
 		fmt.Fprintln(builder)
 
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Streams ")
 		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "ps", "connect", "stop")
+		fmt.Fprintln(builder)
+
+		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Config ")
+		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "config", "set-config", "config default", "set-config default")
 		fmt.Fprintln(builder)
 
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " AI Models ")
@@ -174,6 +188,10 @@ func PrintCustomHelp(all bool) {
 		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Accounts ")
 		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "sign-in", "invite", "revoke", "users")
 		fmt.Fprintln(builder)
+
+		color.New(color.Bold, color.BgCyan, color.FgHiWhite).Fprintln(builder, " Cloud ")
+		printCmds(builder, " ", []color.Attribute{color.Bold, ColorHiCyan}, "credits", "usage", "billing")
+
 	} else {
 
 		// in the same style as 'getting started' section, output See All Commands

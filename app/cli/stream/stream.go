@@ -1,10 +1,11 @@
 package stream
 
 import (
+	"log"
 	streamtui "gpt4cli/stream_tui"
 	"gpt4cli/types"
-	"log"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
@@ -19,8 +20,8 @@ var OnStreamPlan types.OnStreamPlan = func(params types.OnStreamPlanParams) {
 		return
 	}
 
-	// log.Println("Stream message:")
-	// log.Println(spew.Sdump(*params.Msg))
+	log.Println("Stream message:")
+	log.Println(spew.Sdump(*params.Msg))
 
 	streamtui.Send(*params.Msg)
 }

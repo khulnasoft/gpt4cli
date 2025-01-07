@@ -1,27 +1,27 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/plan_exec"
 	"gpt4cli/term"
-	"os"
-	"os/exec"
 	"strings"
+	"time"
+
+	"context"
+
+	"os/signal"
+	"syscall"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
-
-const defaultEditor = "vim"
-
-// const defaultEditor = "nano"
-
-var tellPromptFile string
-var tellBg bool
-var tellStop bool
-var tellNoBuild bool
 
 // tellCmd represents the prompt command
 var tellCmd = &cobra.Command{
@@ -36,36 +36,20 @@ var tellCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(tellCmd)
 
-	tellCmd.Flags().StringVarP(&tellPromptFile, "file", "f", "", "File containing prompt")
-	tellCmd.Flags().BoolVarP(&tellStop, "stop", "s", false, "Stop after a single reply")
-	tellCmd.Flags().BoolVarP(&tellNoBuild, "no-build", "n", false, "Don't build files")
-	tellCmd.Flags().BoolVar(&tellBg, "bg", false, "Execute autonomously in the background")
+	initExecFlags(tellCmd, initExecFlagsParams{})
 }
 
 func doTell(cmd *cobra.Command, args []string) {
-
 	auth.MustResolveAuthWithOrg()
 	lib.MustResolveProject()
+	mustSetPlanExecFlags(cmd)
 
-	if lib.CurrentPlanId == "" {
-		term.OutputNoCurrentPlanErrorAndExit()
+	var apiKeys map[string]string
+	if !auth.Current.IntegratedModelsMode {
+		apiKeys = lib.MustVerifyApiKeys()
 	}
 
-	apiKeys := lib.MustVerifyApiKeys()
-
-	var prompt string
-
-	if len(args) > 0 {
-		prompt = args[0]
-	} else if tellPromptFile != "" {
-		bytes, err := os.ReadFile(tellPromptFile)
-		if err != nil {
-			term.OutputErrorAndExit("Error reading prompt file: %v", err)
-		}
-		prompt = string(bytes)
-	} else {
-		prompt = getEditorPrompt()
-	}
+	prompt := getTellPrompt(args)
 
 	if prompt == "" {
 		fmt.Println("🤷‍♂️ No prompt to send")
@@ -76,10 +60,76 @@ func doTell(cmd *cobra.Command, args []string) {
 		CurrentPlanId: lib.CurrentPlanId,
 		CurrentBranch: lib.CurrentBranch,
 		ApiKeys:       apiKeys,
-		CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool) {
-			return lib.MustCheckOutdatedContext(false, maybeContexts)
+		CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
+			return lib.CheckOutdatedContextWithOutput(false, autoConfirm || tellAutoApply || tellAutoContext, maybeContexts)
 		},
-	}, prompt, tellBg, tellStop, tellNoBuild, false)
+	}, prompt, plan_exec.TellFlags{
+		TellBg:      tellBg,
+		TellStop:    tellStop,
+		TellNoBuild: tellNoBuild,
+		AutoContext: tellAutoContext,
+		ExecEnabled: !noExec,
+	})
+
+	if tellAutoApply {
+		flags := lib.ApplyFlags{
+			AutoConfirm: true,
+			AutoCommit:  autoCommit,
+			NoCommit:    !autoCommit,
+			NoExec:      noExec,
+			AutoExec:    autoExec || autoDebug > 0,
+			AutoDebug:   autoDebug,
+		}
+
+		lib.MustApplyPlan(
+			lib.CurrentPlanId,
+			lib.CurrentBranch,
+			flags,
+			plan_exec.GetOnApplyExecFail(flags),
+		)
+	}
+}
+
+func getTellPrompt(args []string) string {
+	var prompt string
+	var pipedData string
+
+	if len(args) > 0 {
+		prompt = args[0]
+	} else if tellPromptFile != "" {
+		bytes, err := os.ReadFile(tellPromptFile)
+		if err != nil {
+			term.OutputErrorAndExit("Error reading prompt file: %v", err)
+		}
+		prompt = string(bytes)
+	}
+
+	// Check if there's piped input
+	fileInfo, err := os.Stdin.Stat()
+	if err != nil {
+		term.OutputErrorAndExit("Failed to stat stdin: %v", err)
+	}
+
+	if fileInfo.Mode()&os.ModeNamedPipe != 0 {
+		reader := bufio.NewReader(os.Stdin)
+		pipedDataBytes, err := io.ReadAll(reader)
+		if err != nil {
+			term.OutputErrorAndExit("Failed to read piped data: %v", err)
+		}
+		pipedData = string(pipedDataBytes)
+	}
+
+	if prompt == "" && pipedData == "" {
+		prompt = getEditorPrompt()
+	} else if pipedData != "" {
+		if prompt != "" {
+			prompt = fmt.Sprintf("%s\n\n---\n\n%s", prompt, pipedData)
+		} else {
+			prompt = pipedData
+		}
+	}
+
+	return prompt
 }
 
 func prepareEditorCommand(editor string, filename string) *exec.Cmd {
@@ -93,25 +143,25 @@ func prepareEditorCommand(editor string, filename string) *exec.Cmd {
 	}
 }
 
-func getEditorInstructions(editor string) string {
-	return "👉  Write your prompt below, then save and exit to send it to Gpt4cli.\n• To save and exit, press ESC, then type :wq! and press ENTER.\n• To exit without saving, press ESC, then type :q! and press ENTER.\n\n\n"
+func getEditorInstructions() string {
+	if editor == EditorTypeVim {
+		return "👉  Write your prompt below, then save and exit to send it to Gpt4cli.\n• To save and exit, press ESC, then type :wq! and press ENTER.\n• To exit without saving, press ESC, then type :q! and press ENTER.\n\n\n"
+	}
+
+	if editor == EditorTypeNano {
+		return "👉  Write your prompt below, then save and exit to send it to Gpt4cli.\n• To save and exit, press Ctrl+X, then Y, then ENTER.\n• To exit without saving, press Ctrl+X, then N.\n\n\n"
+	}
+
+	return "👉  Write your prompt below, then save and exit to send it to Gpt4cli.\n\n\n"
 }
 
 func getEditorPrompt() string {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = os.Getenv("VISUAL")
-		if editor == "" {
-			editor = defaultEditor
-		}
-	}
-
 	tempFile, err := os.CreateTemp(os.TempDir(), "gpt4cli_prompt_*")
 	if err != nil {
 		term.OutputErrorAndExit("Failed to create temporary file: %v", err)
 	}
 
-	instructions := getEditorInstructions(editor)
+	instructions := getEditorInstructions()
 	filename := tempFile.Name()
 	err = os.WriteFile(filename, []byte(instructions), 0644)
 	if err != nil {
@@ -144,4 +194,52 @@ func getEditorPrompt() string {
 
 	return prompt
 
+}
+
+func maybeShowDiffs() {
+	diffs, err := api.Client.GetPlanDiffs(lib.CurrentPlanId, lib.CurrentBranch, plainTextOutput || showDiffUi)
+	if err != nil {
+		term.OutputErrorAndExit("Error getting plan diffs: %v", err)
+		return
+	}
+
+	if len(diffs) > 0 {
+		cmd := exec.Command(os.Args[0], "diffs", "--ui")
+
+		// Create a context that's cancelled when the program exits
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Ensure cleanup on program exit
+		go func() {
+			// Wait for program exit signal
+			c := make(chan os.Signal, 1)
+			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+			<-c
+
+			// Cancel context and kill the process
+			cancel()
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+		}()
+
+		go func() {
+			if err := cmd.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error starting diffs command: %v\n", err)
+				return
+			}
+
+			// Wait in a separate goroutine
+			go cmd.Wait()
+
+			// Wait for either context cancellation or process completion
+			<-ctx.Done()
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+		}()
+
+		// Give the UI a moment to start
+		time.Sleep(100 * time.Millisecond)
+	}
 }

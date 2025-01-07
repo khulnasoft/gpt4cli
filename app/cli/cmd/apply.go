@@ -3,16 +3,22 @@ package cmd
 import (
 	"gpt4cli/auth"
 	"gpt4cli/lib"
+	"gpt4cli/plan_exec"
 	"gpt4cli/term"
+	"strconv"
 
 	"github.com/spf13/cobra"
 )
 
-var autoConfirm bool
+var autoCommit, noCommit, autoExec bool
 
 func init() {
-	applyCmd.Flags().BoolVarP(&autoConfirm, "yes", "y", false, "Automatically confirm unless plan is outdated")
-
+	applyCmd.Flags().BoolVarP(&autoCommit, "commit", "c", false, "Commit changes to git")
+	applyCmd.Flags().BoolVar(&noCommit, "no-commit", false, "Do not commit changes to git")
+	applyCmd.Flags().BoolVar(&noExec, "no-exec", false, "Disable _apply.sh execution")
+	applyCmd.Flags().BoolVar(&autoExec, "auto-exec", false, "Automatically execute commands without confirmation")
+	applyCmd.Flags().Var(newAutoDebugValue(&autoDebug), "debug", "Automatically execute and debug failing commands (optionally specify number of tries—default is 5)")
+	applyCmd.Flag("debug").NoOptDefVal = strconv.Itoa(defaultAutoDebugTries)
 	RootCmd.AddCommand(applyCmd)
 }
 
@@ -31,5 +37,19 @@ func apply(cmd *cobra.Command, args []string) {
 		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
-	lib.MustApplyPlan(lib.CurrentPlanId, lib.CurrentBranch, autoConfirm)
+	flags := lib.ApplyFlags{
+		AutoConfirm: true,
+		AutoCommit:  autoCommit,
+		NoCommit:    noCommit,
+		AutoExec:    autoExec,
+		NoExec:      noExec,
+		AutoDebug:   autoDebug,
+	}
+
+	lib.MustApplyPlan(
+		lib.CurrentPlanId,
+		lib.CurrentBranch,
+		flags,
+		plan_exec.GetOnApplyExecFail(flags),
+	)
 }

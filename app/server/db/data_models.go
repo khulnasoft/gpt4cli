@@ -16,7 +16,6 @@ type AuthToken struct {
 	Id        string     `db:"id"`
 	UserId    string     `db:"user_id"`
 	TokenHash string     `db:"token_hash"`
-	IsTrial   bool       `db:"is_trial"`
 	CreatedAt time.Time  `db:"created_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
 }
@@ -35,29 +34,32 @@ type Org struct {
 
 func (org *Org) ToApi() *shared.Org {
 	return &shared.Org{
-		Id:   org.Id,
-		Name: org.Name,
+		Id:                 org.Id,
+		Name:               org.Name,
+		AutoAddDomainUsers: org.AutoAddDomainUsers,
+		IsTrial:            org.IsTrial,
 	}
 }
 
 type User struct {
-	Id               string    `db:"id"`
-	Name             string    `db:"name"`
-	Email            string    `db:"email"`
-	Domain           string    `db:"domain"`
-	NumNonDraftPlans int       `db:"num_non_draft_plans"`
-	IsTrial          bool      `db:"is_trial"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	Id                string             `db:"id"`
+	Name              string             `db:"name"`
+	Email             string             `db:"email"`
+	Domain            string             `db:"domain"`
+	NumNonDraftPlans  int                `db:"num_non_draft_plans"`
+	DefaultPlanConfig *shared.PlanConfig `db:"default_plan_config"`
+	CreatedAt         time.Time          `db:"created_at"`
+	UpdatedAt         time.Time          `db:"updated_at"`
 }
 
 func (user *User) ToApi() *shared.User {
 	return &shared.User{
-		Id:               user.Id,
-		Name:             user.Name,
-		Email:            user.Email,
-		NumNonDraftPlans: user.NumNonDraftPlans,
-		IsTrial:          user.IsTrial,
+		Id:                user.Id,
+		Name:              user.Name,
+		Email:             user.Email,
+		NumNonDraftPlans:  user.NumNonDraftPlans,
+		IsTrial:           false, // legacy field
+		DefaultPlanConfig: user.DefaultPlanConfig,
 	}
 }
 
@@ -121,17 +123,18 @@ func (project *Project) ToApi() *shared.Project {
 }
 
 type Plan struct {
-	Id              string     `db:"id"`
-	OrgId           string     `db:"org_id"`
-	OwnerId         string     `db:"owner_id"`
-	ProjectId       string     `db:"project_id"`
-	Name            string     `db:"name"`
-	SharedWithOrgAt *time.Time `db:"shared_with_org_at,omitempty"`
-	TotalReplies    int        `db:"total_replies"`
-	ActiveBranches  int        `db:"active_branches"`
-	ArchivedAt      *time.Time `db:"archived_at,omitempty"`
-	CreatedAt       time.Time  `db:"created_at"`
-	UpdatedAt       time.Time  `db:"updated_at"`
+	Id              string             `db:"id"`
+	OrgId           string             `db:"org_id"`
+	OwnerId         string             `db:"owner_id"`
+	ProjectId       string             `db:"project_id"`
+	Name            string             `db:"name"`
+	SharedWithOrgAt *time.Time         `db:"shared_with_org_at,omitempty"`
+	TotalReplies    int                `db:"total_replies"`
+	ActiveBranches  int                `db:"active_branches"`
+	PlanConfig      *shared.PlanConfig `db:"plan_config"`
+	ArchivedAt      *time.Time         `db:"archived_at,omitempty"`
+	CreatedAt       time.Time          `db:"created_at"`
+	UpdatedAt       time.Time          `db:"updated_at"`
 }
 
 func (plan *Plan) ToApi() *shared.Plan {
@@ -143,6 +146,7 @@ func (plan *Plan) ToApi() *shared.Plan {
 		SharedWithOrgAt: plan.SharedWithOrgAt,
 		TotalReplies:    plan.TotalReplies,
 		ActiveBranches:  plan.ActiveBranches,
+		PlanConfig:      plan.PlanConfig,
 		ArchivedAt:      plan.ArchivedAt,
 		CreatedAt:       plan.CreatedAt,
 		UpdatedAt:       plan.UpdatedAt,
@@ -281,7 +285,7 @@ const (
 type repoLock struct {
 	Id              string    `db:"id"`
 	OrgId           string    `db:"org_id"`
-	UserId          string    `db:"user_id"`
+	UserId          *string   `db:"user_id"`
 	PlanId          string    `db:"plan_id"`
 	Scope           LockScope `db:"scope"`
 	Branch          *string   `db:"branch"`
@@ -379,6 +383,7 @@ type Context struct {
 	Id              string                `json:"id"`
 	OrgId           string                `json:"orgId"`
 	OwnerId         string                `json:"ownerId"`
+	ProjectId       string                `json:"projectId"`
 	PlanId          string                `json:"planId"`
 	ContextType     shared.ContextType    `json:"contextType"`
 	Name            string                `json:"name"`
@@ -387,10 +392,38 @@ type Context struct {
 	Sha             string                `json:"sha"`
 	NumTokens       int                   `json:"numTokens"`
 	Body            string                `json:"body,omitempty"`
+	BodySize        int64                 `json:"bodySize,omitempty"`
 	ForceSkipIgnore bool                  `json:"forceSkipIgnore"`
 	ImageDetail     openai.ImageURLDetail `json:"imageDetail,omitempty"`
+	MapParts        shared.FileMapBodies  `json:"mapParts,omitempty"`
+	MapShas         map[string]string     `json:"mapShas,omitempty"`
+	MapTokens       map[string]int        `json:"mapTokens,omitempty"`
 	CreatedAt       time.Time             `json:"createdAt"`
 	UpdatedAt       time.Time             `json:"updatedAt"`
+}
+
+func (context *Context) ToMeta() *Context {
+	// everything except body and mapParts
+	return &Context{
+		Id:              context.Id,
+		OrgId:           context.OrgId,
+		OwnerId:         context.OwnerId,
+		ProjectId:       context.ProjectId,
+		PlanId:          context.PlanId,
+		ContextType:     context.ContextType,
+		Name:            context.Name,
+		Url:             context.Url,
+		FilePath:        context.FilePath,
+		Sha:             context.Sha,
+		NumTokens:       context.NumTokens,
+		BodySize:        context.BodySize,
+		ForceSkipIgnore: context.ForceSkipIgnore,
+		ImageDetail:     context.ImageDetail,
+		MapShas:         context.MapShas,
+		MapTokens:       context.MapTokens,
+		CreatedAt:       context.CreatedAt,
+		UpdatedAt:       context.UpdatedAt,
+	}
 }
 
 func (context *Context) ToApi() *shared.Context {
@@ -404,7 +437,12 @@ func (context *Context) ToApi() *shared.Context {
 		Sha:             context.Sha,
 		NumTokens:       context.NumTokens,
 		Body:            context.Body,
+		BodySize:        context.BodySize,
 		ForceSkipIgnore: context.ForceSkipIgnore,
+		ImageDetail:     context.ImageDetail,
+		MapParts:        context.MapParts,
+		MapShas:         context.MapShas,
+		MapTokens:       context.MapTokens,
 		CreatedAt:       context.CreatedAt,
 		UpdatedAt:       context.UpdatedAt,
 	}
@@ -471,31 +509,26 @@ func (desc *ConvoMessageDescription) ToApi() *shared.ConvoMessageDescription {
 }
 
 type PlanFileResult struct {
-	Id                  string                `json:"id"`
-	TypeVersion         int                   `json:"typeVersion"`
-	ReplaceWithLineNums bool                  `json:"replaceWithLineNums"`
-	OrgId               string                `json:"orgId"`
-	PlanId              string                `json:"planId"`
-	ConvoMessageId      string                `json:"convoMessageId"`
-	PlanBuildId         string                `json:"planBuildId"`
-	Path                string                `json:"path"`
-	Content             string                `json:"content,omitempty"`
-	Replacements        []*shared.Replacement `json:"replacements"`
-	AnyFailed           bool                  `json:"anyFailed"`
-	Error               string                `json:"error"`
+	Id                  string `json:"id"`
+	TypeVersion         int    `json:"typeVersion"`
+	ReplaceWithLineNums bool   `json:"replaceWithLineNums"`
+	OrgId               string `json:"orgId"`
+	PlanId              string `json:"planId"`
+	ConvoMessageId      string `json:"convoMessageId"`
+	PlanBuildId         string `json:"planBuildId"`
+	Path                string `json:"path"`
+	Content             string `json:"content,omitempty"`
 
-	CanVerify    bool       `json:"canVerify"`
-	RanVerifyAt  *time.Time `json:"ranVerifyAt,omitempty"`
-	VerifyPassed bool       `json:"verifyPassed"`
+	Replacements []*shared.Replacement `json:"replacements"`
+
+	RemovedFile bool `json:"removedFile"`
+
+	AnyFailed bool   `json:"anyFailed"`
+	Error     string `json:"error"`
 
 	WillCheckSyntax bool     `json:"willCheckSyntax"`
 	SyntaxValid     bool     `json:"syntaxValid"`
 	SyntaxErrors    []string `json:"syntaxErrors"`
-
-	IsFix       bool `json:"isFix"`
-	IsSyntaxFix bool `json:"isSyntaxFix"`
-	IsOtherFix  bool `json:"isOtherFix"`
-	FixEpoch    int  `json:"fixEpoch"`
 
 	AppliedAt  *time.Time `json:"appliedAt,omitempty"`
 	RejectedAt *time.Time `json:"rejectedAt,omitempty"`
@@ -516,13 +549,15 @@ func (res *PlanFileResult) ToApi() *shared.PlanFileResult {
 		AppliedAt:           res.AppliedAt,
 		RejectedAt:          res.RejectedAt,
 		Replacements:        res.Replacements,
-		CanVerify:           res.CanVerify,
-		RanVerifyAt:         res.RanVerifyAt,
-		VerifyPassed:        res.VerifyPassed,
-		IsFix:               res.IsFix,
-		IsSyntaxFix:         res.IsSyntaxFix,
-		IsOtherFix:          res.IsOtherFix,
+		RemovedFile:         res.RemovedFile,
 		CreatedAt:           res.CreatedAt,
 		UpdatedAt:           res.UpdatedAt,
 	}
+}
+
+type Subtask struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	UsesFiles   []string `json:"usesFiles"`
+	IsFinished  bool     `json:"isFinished"`
 }

@@ -4,17 +4,43 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
 	"gpt4cli-server/types"
-	"log"
-	"net/http"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
-func loadContexts(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth, loadReq *shared.LoadContextRequest, plan *db.Plan, branchName string) (*shared.LoadContextResponse, []*db.Context) {
+func loadContexts(
+	w http.ResponseWriter,
+	r *http.Request,
+	auth *types.ServerAuth,
+	loadReq *shared.LoadContextRequest,
+	plan *db.Plan,
+	branchName string,
+	cachedMapsByPath map[string]*db.CachedMap,
+) (*shared.LoadContextResponse, []*db.Context) {
+	// check file count and size limits
+	totalFiles := 0
+	for _, context := range *loadReq {
+		totalFiles++
+		if totalFiles > shared.MaxContextCount {
+			log.Printf("Error: Too many contexts to load (found %d, limit is %d)\n", totalFiles, shared.MaxContextCount)
+			http.Error(w, fmt.Sprintf("Too many contexts to load (found %d, limit is %d)", totalFiles, shared.MaxContextCount), http.StatusBadRequest)
+			return nil, nil
+		}
+
+		fileSize := int64(len(context.Body))
+		if fileSize > shared.MaxContextBodySize {
+			log.Printf("Error: Context %s exceeds size limit (size %.2f MB, limit %d MB)\n", context.Name, float64(fileSize)/1024/1024, int(shared.MaxContextBodySize)/1024/1024)
+			http.Error(w, fmt.Sprintf("Context %s exceeds size limit (size %.2f MB, limit %d MB)", context.Name, float64(fileSize)/1024/1024, int(shared.MaxContextBodySize)/1024/1024), http.StatusBadRequest)
+			return nil, nil
+		}
+	}
+
 	var err error
 	var settings *shared.PlanSettings
 	var client *openai.Client
@@ -32,6 +58,7 @@ func loadContexts(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth
 			clients := initClients(
 				initClientsParams{
 					w:           w,
+					auth:        auth,
 					apiKeys:     context.ApiKeys,
 					openAIBase:  context.OpenAIBase,
 					openAIOrgId: context.OpenAIOrgId,
@@ -65,7 +92,7 @@ func loadContexts(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth
 			num++
 
 			go func(context *shared.LoadContextParams) {
-				name, err := model.GenPipedDataName(client, settings.ModelPack.Namer, context.Body)
+				name, err := model.GenPipedDataName(auth, plan, settings, client, context.Body)
 
 				if err != nil {
 					errCh <- fmt.Errorf("error generating name for piped data: %v", err)
@@ -78,7 +105,7 @@ func loadContexts(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth
 			num++
 
 			go func(context *shared.LoadContextParams) {
-				name, err := model.GenNoteName(client, settings.ModelPack.Namer, context.Body)
+				name, err := model.GenNoteName(auth, plan, settings, client, context.Body)
 
 				if err != nil {
 					errCh <- fmt.Errorf("error generating name for note: %v", err)
@@ -100,8 +127,8 @@ func loadContexts(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	ctx, cancel := context.WithCancel(r.Context())
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return nil, nil
 	} else {
@@ -110,12 +137,13 @@ func loadContexts(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth
 		}()
 	}
 
-	res, dbContexts, err := db.LoadContexts(db.LoadContextsParams{
-		OrgId:      auth.OrgId,
-		Plan:       plan,
-		BranchName: branchName,
-		Req:        loadReq,
-		UserId:     auth.User.Id,
+	res, dbContexts, err := db.LoadContexts(ctx, db.LoadContextsParams{
+		OrgId:            auth.OrgId,
+		Plan:             plan,
+		BranchName:       branchName,
+		Req:              loadReq,
+		UserId:           auth.User.Id,
+		CachedMapsByPath: cachedMapsByPath,
 	})
 
 	if err != nil {
