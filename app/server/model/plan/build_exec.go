@@ -1,16 +1,11 @@
 package plan
 
 import (
-	"encoding/json"
 	"fmt"
-	"gpt4cli-server/db"
-	"gpt4cli-server/model"
-	"gpt4cli-server/model/prompts"
-	"gpt4cli-server/syntax"
-	"gpt4cli-server/types"
 	"log"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
@@ -157,17 +152,16 @@ func (buildState *activeBuildStreamState) execPlanBuild(activeBuild *types.Activ
 		filePath:               filePath,
 		activeBuild:            activeBuild,
 	}
+
+	log.Println("execPlanBuild - fileState.loadBuildFile()")
 	err := fileState.loadBuildFile(activeBuild)
 	if err != nil {
 		log.Printf("Error loading build file: %v\n", err)
 		return
 	}
 
-	if activeBuild.IsVerification {
-		fileState.verifyFileBuild()
-	} else {
-		fileState.buildFile()
-	}
+	log.Println("execPlanBuild - fileState.buildFile()")
+	fileState.buildFile()
 }
 
 func (fileState *activeBuildStreamFileState) buildFile() {
@@ -188,16 +182,21 @@ func (fileState *activeBuildStreamFileState) buildFile() {
 
 	log.Printf("Building file %s\n", filePath)
 
-	log.Println("activePlan.ContextsByPath files:")
-	for k := range activePlan.ContextsByPath {
-		log.Println(k)
-	}
+	log.Printf("%d files in context\n", len(activePlan.ContextsByPath))
+
+	// log.Println("activePlan.ContextsByPath files:")
+	// for k := range activePlan.ContextsByPath {
+	// 	log.Println(k)
+	// }
 
 	// get relevant file context (if any)
 	contextPart := activePlan.ContextsByPath[filePath]
 
 	var currentState string
 	currentPlanFile, fileInCurrentPlan := currentPlan.CurrentPlanFiles.Files[filePath]
+
+	// log.Println("plan files:")
+	// spew.Dump(currentPlan.CurrentPlanFiles.Files)
 
 	if fileInCurrentPlan {
 		log.Printf("File %s found in current plan.\n", filePath)
@@ -214,6 +213,100 @@ func (fileState *activeBuildStreamFileState) buildFile() {
 		}
 
 		// log.Println("\n\nCurrent state:\n", currentState, "\n\n")
+	}
+
+	if activeBuild.IsMoveOp {
+		log.Printf("File %s is a move operation. Moving to %s\n", filePath, activeBuild.MoveDestination)
+		log.Println("Will remove this path and then queue another build for the new path with the current file's content")
+
+		fileState.queueBuilds([]*types.ActiveBuild{
+			{
+				ReplyId:    activeBuild.ReplyId,
+				Idx:        activeBuild.Idx,
+				Path:       activeBuild.Path,
+				IsRemoveOp: true,
+			},
+			{
+				ReplyId:           activeBuild.ReplyId,
+				Idx:               activeBuild.Idx,
+				Path:              activeBuild.MoveDestination,
+				FileContent:       currentState,
+				FileContentTokens: 0,
+			},
+		})
+
+		return
+	}
+
+	if activeBuild.IsRemoveOp {
+		log.Printf("File %s is a remove operation. Removing file.\n", filePath)
+
+		buildInfo := &shared.BuildInfo{
+			Path:      filePath,
+			NumTokens: 0,
+			Removed:   true,
+			Finished:  true,
+		}
+
+		activePlan.Stream(shared.StreamMessage{
+			Type:      shared.StreamMessageBuildInfo,
+			BuildInfo: buildInfo,
+		})
+
+		planRes := &db.PlanFileResult{
+			OrgId:          currentOrgId,
+			PlanId:         planId,
+			PlanBuildId:    build.Id,
+			ConvoMessageId: build.ConvoMessageId,
+			Path:           filePath,
+			Content:        "",
+			RemovedFile:    true,
+		}
+		fileState.onFinishBuildFile(planRes, "")
+		return
+	}
+
+	if activeBuild.IsResetOp {
+		log.Printf("File %s is a reset operation. Resetting file.\n", filePath)
+
+		if contextPart == nil {
+			log.Printf("File %s not found in model context. Removing pending file.\n", filePath)
+
+			fileState.queueBuilds([]*types.ActiveBuild{
+				{
+					ReplyId:    activeBuild.ReplyId,
+					Idx:        activeBuild.Idx,
+					Path:       activeBuild.Path,
+					IsRemoveOp: true,
+				},
+			})
+
+			return
+		} else {
+			log.Printf("File %s found in model context. Using context state.\n", filePath)
+
+			buildInfo := &shared.BuildInfo{
+				Path:      filePath,
+				NumTokens: 0,
+				Finished:  true,
+			}
+
+			activePlan.Stream(shared.StreamMessage{
+				Type:      shared.StreamMessageBuildInfo,
+				BuildInfo: buildInfo,
+			})
+
+			planRes := &db.PlanFileResult{
+				OrgId:          currentOrgId,
+				PlanId:         planId,
+				PlanBuildId:    build.Id,
+				ConvoMessageId: build.ConvoMessageId,
+				Path:           filePath,
+				Content:        contextPart.Body,
+			}
+			fileState.onFinishBuildFile(planRes, "")
+			return
+		}
 	}
 
 	fileState.preBuildState = currentState
@@ -233,28 +326,28 @@ func (fileState *activeBuildStreamFileState) buildFile() {
 		})
 
 		// validate syntax of new file
-		validationRes, err := syntax.Validate(activePlan.Ctx, filePath, activeBuild.FileContent)
+		// validationRes, err := syntax.Validate(activePlan.Ctx, filePath, activeBuild.FileContent)
 
-		if err != nil {
-			log.Printf("Error validating syntax for new file '%s': %v\n", filePath, err)
-			fileState.onBuildFileError(fmt.Errorf("error validating syntax for new file '%s': %v", filePath, err))
-			return
-		}
+		// if err != nil {
+		// 	log.Printf("Error validating syntax for new file '%s': %v\n", filePath, err)
+		// 	fileState.onBuildFileError(fmt.Errorf("error validating syntax for new file '%s': %v", filePath, err))
+		// 	return
+		// }
 
 		// new file
 		planRes := &db.PlanFileResult{
-			OrgId:           currentOrgId,
-			PlanId:          planId,
-			PlanBuildId:     build.Id,
-			ConvoMessageId:  build.ConvoMessageId,
-			Path:            filePath,
-			Content:         activeBuild.FileContent,
-			WillCheckSyntax: validationRes.HasParser && !validationRes.TimedOut,
-			SyntaxValid:     validationRes.Valid,
-			SyntaxErrors:    validationRes.Errors,
+			OrgId:          currentOrgId,
+			PlanId:         planId,
+			PlanBuildId:    build.Id,
+			ConvoMessageId: build.ConvoMessageId,
+			Path:           filePath,
+			Content:        activeBuild.FileContent,
+			// WillCheckSyntax: validationRes.HasParser && !validationRes.TimedOut,
+			// SyntaxValid:     validationRes.Valid,
+			// SyntaxErrors:    validationRes.Errors,
 		}
 
-		log.Println("build exec - Plan file result:")
+		// log.Println("build exec - new file result")
 		// spew.Dump(planRes)
 
 		fileState.isNewFile = true
@@ -273,128 +366,10 @@ func (fileState *activeBuildStreamFileState) buildFile() {
 		log.Printf("Current state num tokens: %d\n", currentNumTokens)
 
 		activeBuild.CurrentFileTokens = currentNumTokens
+		activePlan.DidEditFiles = true
 	}
 
-	fileState.buildFileLineNums()
-}
-
-func (fileState *activeBuildStreamFileState) buildFileLineNums() {
-	filePath := fileState.filePath
-	activeBuild := fileState.activeBuild
-	clients := fileState.clients
-	planId := fileState.plan.Id
-	branch := fileState.branch
-	config := fileState.settings.ModelPack.Builder
-	originalFile := fileState.preBuildState
-
-	activePlan := GetActivePlan(planId, branch)
-
-	if activePlan == nil {
-		log.Printf("Active plan not found for plan ID %s and branch %s\n", planId, branch)
-		return
-	}
-
-	log.Println("buildFileLineNums - getting file from model: " + filePath)
-	// log.Println("File context:", fileContext)
-
-	// log.Println("currentState:", currentState)
-
-	sysPrompt := prompts.GetBuildLineNumbersSysPrompt(filePath, originalFile, fmt.Sprintf("%s\n\n```%s```", activeBuild.FileDescription, activeBuild.FileContent))
-
-	fileMessages := []openai.ChatCompletionMessage{
-		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: sysPrompt,
-		},
-	}
-
-	log.Println("buildFileLineNums - calling model for file: " + filePath)
-
-	// for _, msg := range fileMessages {
-	// 	log.Printf("%s: %s\n", msg.Role, msg.Content)
-	// }
-
-	var responseFormat *openai.ChatCompletionResponseFormat
-	if config.BaseModelConfig.HasJsonResponseMode {
-		responseFormat = &openai.ChatCompletionResponseFormat{Type: "json_object"}
-	}
-
-	// log.Println("responseFormat:", responseFormat)
-	// log.Println("Model:", config.BaseModelConfig.ModelName)
-
-	modelReq := openai.ChatCompletionRequest{
-		Model: config.BaseModelConfig.ModelName,
-		Tools: []openai.Tool{
-			{
-				Type:     "function",
-				Function: &prompts.ListReplacementsFn,
-			},
-		},
-		ToolChoice: openai.ToolChoice{
-			Type: "function",
-			Function: openai.ToolFunction{
-				Name: prompts.ListReplacementsFn.Name,
-			},
-		},
-		Messages:       fileMessages,
-		Temperature:    config.Temperature,
-		TopP:           config.TopP,
-		ResponseFormat: responseFormat,
-	}
-
-	envVar := config.BaseModelConfig.ApiKeyEnvVar
-	client := clients[envVar]
-
-	if config.BaseModelConfig.HasStreamingFunctionCalls {
-		stream, err := model.CreateChatCompletionStreamWithRetries(client, activePlan.Ctx, modelReq)
-		if err != nil {
-			log.Printf("Error creating plan file stream for path '%s': %v\n", filePath, err)
-			fileState.onBuildFileError(fmt.Errorf("error creating plan file stream for path '%s': %v", filePath, err))
-			return
-		}
-
-		go fileState.listenStreamChangesWithLineNums(stream)
-	} else {
-
-		log.Println("request:")
-		log.Println(spew.Sdump(modelReq))
-
-		resp, err := model.CreateChatCompletionWithRetries(client, activePlan.Ctx, modelReq)
-
-		if err != nil {
-			log.Printf("Error building file '%s': %v\n", filePath, err)
-			fileState.onBuildFileError(fmt.Errorf("error building file '%s': %v", filePath, err))
-			return
-		}
-
-		var s string
-		var res types.ChangesWithLineNums
-
-		for _, choice := range resp.Choices {
-			if len(choice.Message.ToolCalls) == 1 &&
-				choice.Message.ToolCalls[0].Function.Name == prompts.ListReplacementsFn.Name {
-				fnCall := choice.Message.ToolCalls[0].Function
-				s = fnCall.Arguments
-				break
-			}
-		}
-
-		if s == "" {
-			log.Println("no ListReplacements function call found in response")
-			fileState.lineNumsRetryOrError(fmt.Errorf("no ListReplacements function call found in response"))
-			return
-		}
-
-		bytes := []byte(s)
-
-		err = json.Unmarshal(bytes, &res)
-		if err != nil {
-			log.Printf("Error unmarshalling build response: %v\n", err)
-			fileState.lineNumsRetryOrError(fmt.Errorf("error unmarshalling build response: %v", err))
-			return
-		}
-
-		fileState.onBuildResult(res)
-	}
-
+	// build structured edits strategy now works regardless of language/tree-sitter support
+	log.Println("buildFile - building structured edits")
+	fileState.buildStructuredEdits()
 }

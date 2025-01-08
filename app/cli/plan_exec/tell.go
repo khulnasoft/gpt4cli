@@ -2,34 +2,62 @@ package plan_exec
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/fs"
 	"gpt4cli/stream"
 	streamtui "gpt4cli/stream_tui"
 	"gpt4cli/term"
-	"log"
-	"os"
 
+	"github.com/fatih/color"
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func TellPlan(
 	params ExecParams,
 	prompt string,
-	tellBg,
-	tellStop,
-	tellNoBuild,
-	isUserContinue bool,
+	flags TellFlags,
 ) {
+	tellBg := flags.TellBg
+	tellStop := flags.TellStop
+	tellNoBuild := flags.TellNoBuild
+	isUserContinue := flags.IsUserContinue
+	isDebugCmd := flags.IsUserDebug
+	isChatOnly := flags.IsChatOnly
+	autoContext := flags.AutoContext
+	execEnabled := flags.ExecEnabled
+
+	done := make(chan struct{})
+
+	outputPromptIfTell := func() {
+		if isUserContinue || prompt == "" {
+			return
+		}
+
+		term.StopSpinner()
+		// print prompt so it isn't lost
+		color.New(term.ColorHiCyan, color.Bold).Println("\nYour prompt 👇")
+		fmt.Println()
+		fmt.Println(prompt)
+		fmt.Println()
+	}
+
 	term.StartSpinner("")
 	contexts, apiErr := api.Client.ListContext(params.CurrentPlanId, params.CurrentBranch)
 
 	if apiErr != nil {
+		outputPromptIfTell()
 		term.OutputErrorAndExit("Error getting context: %v", apiErr)
 	}
 
-	anyOutdated, didUpdate := params.CheckOutdatedContext(contexts)
+	anyOutdated, didUpdate, err := params.CheckOutdatedContext(contexts)
+
+	if err != nil {
+		outputPromptIfTell()
+		term.OutputErrorAndExit("Error checking outdated context: %v", err)
+	}
 
 	if anyOutdated && !didUpdate {
 		term.StopSpinner()
@@ -38,12 +66,19 @@ func TellPlan(
 		} else {
 			log.Println("Prompt not sent")
 		}
+
+		outputPromptIfTell()
+		color.New(term.ColorHiRed, color.Bold).Println("🛑 Plan won't continue due to outdated context")
+
 		os.Exit(0)
 	}
 
+	term.StartSpinner("")
 	paths, err := fs.GetProjectPaths(fs.GetBaseDirForContexts(contexts))
+	term.StopSpinner()
 
 	if err != nil {
+		outputPromptIfTell()
 		term.OutputErrorAndExit("Error getting project paths: %v", err)
 	}
 
@@ -51,7 +86,7 @@ func TellPlan(
 	fn = func() bool {
 
 		var buildMode shared.BuildMode
-		if tellNoBuild {
+		if tellNoBuild || isChatOnly {
 			buildMode = shared.BuildModeNone
 		} else {
 			buildMode = shared.BuildModeAuto
@@ -75,6 +110,11 @@ func TellPlan(
 			openAIOrgId = params.ApiKeys["OPENAI_ORG_ID"]
 		}
 
+		var osDetails string
+		if execEnabled {
+			osDetails = term.GetOsDetails()
+		}
+
 		apiErr := api.Client.TellPlan(params.CurrentPlanId, params.CurrentBranch, shared.TellPlanRequest{
 			Prompt:         prompt,
 			ConnectStream:  !tellBg,
@@ -82,6 +122,11 @@ func TellPlan(
 			ProjectPaths:   paths.ActivePaths,
 			BuildMode:      buildMode,
 			IsUserContinue: isUserContinue,
+			IsUserDebug:    isDebugCmd,
+			IsChatOnly:     isChatOnly,
+			AutoContext:    autoContext,
+			ExecEnabled:    execEnabled,
+			OsDetails:      osDetails,
 			ApiKey:         legacyApiKey, // deprecated
 			Endpoint:       openAIBase,   // deprecated
 			ApiKeys:        params.ApiKeys,
@@ -93,25 +138,26 @@ func TellPlan(
 
 		if apiErr != nil {
 			if apiErr.Type == shared.ApiErrorTypeTrialMessagesExceeded {
-				fmt.Fprintf(os.Stderr, "\n🚨 You've reached the Gpt4cli Cloud anonymous trial limit of %d messages per plan\n", apiErr.TrialMessagesExceededError.MaxReplies)
+				fmt.Fprintf(os.Stderr, "\n🚨 You've reached the Gpt4cli Cloud trial limit of %d messages per plan\n", apiErr.TrialMessagesExceededError.MaxReplies)
 
-				res, err := term.ConfirmYesNo("Upgrade to an unlimited free account?")
+				res, err := term.ConfirmYesNo("Upgrade now?")
 
 				if err != nil {
+					outputPromptIfTell()
 					term.OutputErrorAndExit("Error prompting upgrade trial: %v", err)
 				}
 
 				if res {
-					err := auth.ConvertTrial()
-					if err != nil {
-						term.OutputErrorAndExit("Error converting trial: %v", err)
-					}
+					auth.ConvertTrial()
 					// retry action after converting trial
 					return fn()
 				}
+
+				outputPromptIfTell()
 				return false
 			}
 
+			outputPromptIfTell()
 			term.OutputErrorAndExit("Prompt error: %v", apiErr.Msg)
 		} else if apiErr != nil && isUserContinue && apiErr.Type == shared.ApiErrorTypeContinueNoMessages {
 			fmt.Println("🤷‍♂️ There's no plan yet to continue")
@@ -125,17 +171,21 @@ func TellPlan(
 				err := streamtui.StartStreamUI(prompt, false)
 
 				if err != nil {
+					outputPromptIfTell()
 					term.OutputErrorAndExit("Error starting stream UI: %v", err)
 				}
 
 				fmt.Println()
 
-				if tellStop {
-					term.PrintCmds("", "continue", "changes", "diff", "apply", "reject", "log", "rewind")
-				} else {
-					term.PrintCmds("", "changes", "diff", "apply", "reject", "log", "rewind")
+				if tellStop && !isChatOnly {
+					term.PrintCmds("", "continue", "diff", "diff --ui", "apply", "log")
+				} else if !isDebugCmd && !isChatOnly {
+					term.PrintCmds("", "diff", "diff --ui", "apply", "log")
+				} else if isChatOnly {
+					term.PrintCmds("", "tell", "convo", "summary")
 				}
-				os.Exit(0)
+				close(done)
+
 			}()
 		}
 
@@ -148,11 +198,11 @@ func TellPlan(
 	}
 
 	if tellBg {
+		outputPromptIfTell()
 		fmt.Println("✅ Plan is active in the background")
 		fmt.Println()
 		term.PrintCmds("", "ps", "connect", "stop")
 	} else {
-		// Wait for stream UI to quit
-		select {}
+		<-done
 	}
 }

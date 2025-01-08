@@ -9,6 +9,20 @@ import (
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
+var openUnauthenticatedCloudURL func(msg, path string)
+var openAuthenticatedURL func(msg, path string)
+var convertTrial func()
+
+func SetOpenUnauthenticatedCloudURLFn(fn func(msg, path string)) {
+	openUnauthenticatedCloudURL = fn
+}
+func SetOpenAuthenticatedURLFn(fn func(msg, path string)) {
+	openAuthenticatedURL = fn
+}
+func SetConvertTrialFn(fn func()) {
+	convertTrial = fn
+}
+
 func OutputNoOpenAIApiKeyMsgAndExit() {
 	fmt.Fprintln(os.Stderr, color.New(color.Bold, ColorHiRed).Sprintln("\n🚨 OPENAI_API_KEY environment variable is not set.")+color.New().Sprintln("\nSet it with:\n\nexport OPENAI_API_KEY=your-api-key\n\nThen try again.\n\n👉 If you don't have an OpenAI account, sign up here → https://platform.openai.com/signup\n\n🔑 Generate an api key here → https://platform.openai.com/api-keys"))
 	os.Exit(1)
@@ -87,4 +101,102 @@ func OutputNoCurrentPlanErrorAndExit() {
 	fmt.Println()
 	PrintCmds("", "new", "cd")
 	os.Exit(1)
+}
+
+func HandleApiError(apiError *shared.ApiError) {
+	if apiError.Type == shared.ApiErrorTypeCloudSubscriptionPaused {
+		if apiError.BillingError.HasBillingPermission {
+			StopSpinner()
+			fmt.Println("Your org's Gpt4cli Cloud subscription is paused.")
+			res, err := ConfirmYesNo("Go to billing settings?")
+			if err != nil {
+				OutputErrorAndExit("error getting confirmation")
+			}
+			if res {
+				openAuthenticatedURL("Opening billing settings in your browser.", "/settings/billing")
+				os.Exit(0)
+			} else {
+				os.Exit(0)
+			}
+		} else {
+			OutputErrorAndExit("Your org's subscription is paused. Please contact an org owner to continue.")
+		}
+	}
+
+	if apiError.Type == shared.ApiErrorTypeCloudSubscriptionOverdue {
+		if apiError.BillingError.HasBillingPermission {
+			StopSpinner()
+			OutputSimpleError("Your org's Gpt4cli Cloud subscription is overdue.")
+			res, err := ConfirmYesNo("Go to billing settings?")
+			if err != nil {
+				OutputErrorAndExit("error getting confirmation")
+			}
+			if res {
+				openAuthenticatedURL("Opening billing settings in your browser.", "/settings/billing")
+				os.Exit(0)
+			} else {
+				os.Exit(0)
+			}
+		} else {
+			OutputErrorAndExit("Your org's subscription is overdue. Please contact an org owner to continue.")
+		}
+	}
+
+	if apiError.Type == shared.ApiErrorTypeCloudMonthlyMaxReached {
+		if apiError.BillingError.HasBillingPermission {
+			StopSpinner()
+			OutputSimpleError("Your org has reached its monthly limit for Gpt4cli Cloud.")
+			res, err := ConfirmYesNo("Go to billing settings?")
+			if err != nil {
+				OutputErrorAndExit("error getting confirmation")
+			}
+			if res {
+				openAuthenticatedURL("Opening billing settings in your browser.", "/settings/billing")
+				os.Exit(0)
+			} else {
+				os.Exit(0)
+			}
+		} else {
+			OutputErrorAndExit("Your org has reached its monthly limit for Gpt4cli Cloud.")
+		}
+	}
+
+	if apiError.Type == shared.ApiErrorTypeCloudInsufficientCredits {
+		if apiError.BillingError.HasBillingPermission {
+			StopSpinner()
+			OutputSimpleError("Insufficient credits.")
+			res, err := ConfirmYesNo("Go to billing settings?")
+			if err != nil {
+				OutputErrorAndExit("error getting confirmation")
+			}
+			if res {
+				openAuthenticatedURL("Opening billing settings in your browser.", "/settings/billing")
+				os.Exit(0)
+			} else {
+				os.Exit(0)
+			}
+		} else {
+			OutputErrorAndExit("Insufficient credits.")
+		}
+	}
+
+	if apiError.Type == shared.ApiErrorTypeTrialMessagesExceeded {
+		StopSpinner()
+		fmt.Fprintf(os.Stderr, "\n🚨 You've reached the Gpt4cli Cloud trial limit of %d messages per plan\n", apiError.TrialMessagesExceededError.MaxReplies)
+
+		res, err := ConfirmYesNo("Upgrade now?")
+
+		if err != nil {
+			OutputErrorAndExit("Error prompting upgrade trial: %v", err)
+		}
+
+		if res {
+			convertTrial()
+			PrintCmds("", "continue")
+			os.Exit(0)
+		}
+	}
+
+	StopSpinner()
+	OutputErrorAndExit(apiError.Msg)
 }

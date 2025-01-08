@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"gpt4cli/types"
 	"io"
 	"log"
+	"gpt4cli/types"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 )

@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/muesli/reflow/wrap"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const replacementPrependLines = 20

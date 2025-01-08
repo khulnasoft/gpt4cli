@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
-	"gpt4cli-server/db"
-	"gpt4cli-server/types"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"gpt4cli-server/db"
+	"gpt4cli-server/hooks"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 )
@@ -14,7 +15,7 @@ import (
 func ListOrgsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for ListOrgsHandler")
 
-	auth := authenticate(w, r, false)
+	auth := Authenticate(w, r, false)
 	if auth == nil {
 		return
 	}
@@ -27,9 +28,12 @@ func ListOrgsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var apiOrgs []*shared.Org
-	for _, org := range orgs {
-		apiOrgs = append(apiOrgs, org.ToApi())
+	apiOrgs, apiErr := toApiOrgs(orgs)
+
+	if apiErr != nil {
+		log.Printf("Error converting orgs to api: %v\n", apiErr)
+		writeApiError(w, *apiErr)
+		return
 	}
 
 	bytes, err := json.Marshal(apiOrgs)
@@ -48,17 +52,17 @@ func ListOrgsHandler(w http.ResponseWriter, r *http.Request) {
 func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for CreateOrgHandler")
 
-	auth := authenticate(w, r, false)
-	if auth == nil {
+	if os.Getenv("IS_CLOUD") != "" {
+		writeApiError(w, shared.ApiError{
+			Type:   shared.ApiErrorTypeOther,
+			Status: http.StatusForbidden,
+			Msg:    "Gpt4cli Cloud orgs can only be created by starting a trial",
+		})
 		return
 	}
 
-	if auth.User.IsTrial {
-		writeApiError(w, shared.ApiError{
-			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
-			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't create org",
-		})
+	auth := Authenticate(w, r, false)
+	if auth == nil {
 		return
 	}
 
@@ -78,6 +82,8 @@ func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var apiErr *shared.ApiError
+
 	// start a transaction
 	tx, err := db.Conn.Beginx()
 	if err != nil {
@@ -88,7 +94,7 @@ func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Ensure that rollback is attempted in case of failure
 	defer func() {
-		if err != nil {
+		if err != nil || apiErr != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				log.Printf("transaction rollback error: %v\n", rbErr)
 			} else {
@@ -127,6 +133,19 @@ func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	_, apiErr = hooks.ExecHook(hooks.CreateOrg, hooks.HookParams{
+		Auth: auth,
+		Tx:   tx,
+
+		CreateOrgHookRequestParams: &hooks.CreateOrgHookRequestParams{
+			Org: org,
+		},
+	})
+	if apiErr != nil {
+		writeApiError(w, *apiErr)
+		return
+	}
+
 	err = tx.Commit()
 
 	if err != nil {
@@ -147,6 +166,13 @@ func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = SetAuthCookieIfBrowser(w, r, auth.User, "", org.Id)
+	if err != nil {
+		log.Printf("Error setting auth cookie: %v\n", err)
+		http.Error(w, "Error setting auth cookie: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	log.Println("Successfully created org")
 
 	w.Write(bytes)
@@ -155,11 +181,36 @@ func CreateOrgHandler(w http.ResponseWriter, r *http.Request) {
 func GetOrgSessionHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for GetOrgSessionHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 
 	if auth == nil {
 		return
 	}
+
+	org, apiErr := getApiOrg(auth.OrgId)
+
+	if apiErr != nil {
+		log.Printf("Error converting org to api: %v\n", apiErr)
+		writeApiError(w, *apiErr)
+		return
+	}
+
+	bytes, err := json.Marshal(org)
+
+	if err != nil {
+		log.Printf("Error marshalling response: %v\n", err)
+		http.Error(w, "Error marshalling response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = SetAuthCookieIfBrowser(w, r, auth.User, "", org.Id)
+	if err != nil {
+		log.Printf("Error setting auth cookie: %v\n", err)
+		http.Error(w, "Error setting auth cookie: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(bytes)
 
 	log.Println("Successfully got org session")
 }
@@ -167,21 +218,28 @@ func GetOrgSessionHandler(w http.ResponseWriter, r *http.Request) {
 func ListOrgRolesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for ListOrgRolesHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't list org roles",
+			Msg:    "Trial user can't list org roles",
 		})
 		return
 	}
 
-	if !auth.HasPermission(types.PermissionListOrgRoles) {
+	if !auth.HasPermission(shared.PermissionListOrgRoles) {
 		log.Println("User cannot list org roles")
 		http.Error(w, "User cannot list org roles", http.StatusForbidden)
 		return

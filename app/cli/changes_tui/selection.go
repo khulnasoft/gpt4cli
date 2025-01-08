@@ -2,8 +2,8 @@ package changes_tui
 
 import (
 	"fmt"
-	"gpt4cli/term"
 	"log"
+	"gpt4cli/term"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 )

@@ -1,0 +1,5 @@
+dist-server/
+cli/
+node_modules/
+gpt4cli-server
+gpt4cli-cloud

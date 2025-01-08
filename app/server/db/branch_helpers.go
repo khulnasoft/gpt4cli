@@ -6,8 +6,8 @@ import (
 	"log"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/lib/pq"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func CreateBranch(plan *Plan, parentBranch *Branch, name string, tx *sqlx.Tx) (*Branch, error) {
@@ -80,12 +80,12 @@ func CreateBranch(plan *Plan, parentBranch *Branch, name string, tx *sqlx.Tx) (*
 
 	// Create the git branch (except for main, which is created by default on repo init)
 	if name != "main" {
-		parentBranchName := "main"
-		if parentBranch != nil {
-			parentBranchName = parentBranch.Name
-		}
+		// parentBranchName := "main"
+		// if parentBranch != nil {
+		// 	parentBranchName = parentBranch.Name
+		// }
 
-		err = GitCreateBranch(plan.OrgId, plan.Id, parentBranchName, name)
+		err = GitCreateBranch(plan.OrgId, plan.Id, name)
 
 		if err != nil {
 			return nil, fmt.Errorf("error creating git branch: %v", err)

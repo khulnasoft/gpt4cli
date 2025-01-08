@@ -54,6 +54,19 @@ var examples = []TestExample{
 			"server/model/proposal/create.go": 239,
 		},
 	},
+	{
+		N: 7,
+		TokensByFilePath: map[string]int{
+			"file_map/map.go": 239,
+		},
+	},
+	{
+		N: 8,
+		TokensByFilePath: map[string]int{
+			"Makefile":  100,
+			"_apply.sh": 100,
+		},
+	},
 }
 
 func TestReplyTokenCounter(t *testing.T) {
@@ -85,7 +98,7 @@ func TestReplyTokenCounter(t *testing.T) {
 			i = end
 		}
 
-		res := counter.FinishAndRead()
+		res := counter.Read()
 
 		totalCounted := res.TotalTokens
 		files := res.Files
@@ -106,6 +119,11 @@ func TestReplyTokenCounter(t *testing.T) {
 				t.Errorf("Expected %s in tokensByFilePath", filePath)
 			}
 		}
+
+		// fmt.Println("file contents:")
+		// spew.Dump(fileContents)
+
+		// t.Errorf("output")
 
 		// if totalCounted != totalTokens {
 		// 	t.Errorf("Expected %d tokens, got %d", totalTokens, totalCounted)

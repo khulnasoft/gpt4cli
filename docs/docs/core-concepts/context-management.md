@@ -5,7 +5,7 @@ sidebar_label: Context
 
 # Context Management
 
-Context in Gpt4cli refers to files, directories, URLs, images, notes, or piped in data that the LLM uses to understand and work on your project. Context is always associated with a [plan](./plans.md)
+Context in Gpt4cli refers to files, directories, URLs, images, notes, or piped in data that the LLM uses to understand and work on your project. Context is always associated with a [plan](./plans.md).
 
 Changes to context are [version controlled](./version-control.md) and can be [branched](./branches.md).
 
@@ -130,7 +130,7 @@ gpt4cli clear
 
 ## Updating Context
 
-If files in context are modified outside of Gpt4cli, you will be prompted to update them the next time you send a prompt. You can also update any outdated files with the `update` command.
+If files, directory layouts, or URLs in context are modified outside of Gpt4cli, you'll be prompted to update them the next time you send a prompt. You can also update any outdated files with the `update` command.
 
 ```bash
 gpt4cli update # update files in context

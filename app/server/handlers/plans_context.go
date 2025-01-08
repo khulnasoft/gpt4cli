@@ -3,10 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"gpt4cli-server/db"
 	"io"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
 	"github.com/khulnasoft/gpt4cli/shared"
@@ -15,7 +15,7 @@ import (
 func ListContextHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for ListContextHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -30,7 +30,7 @@ func ListContextHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -39,7 +39,7 @@ func ListContextHandler(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, false)
+	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, false, false)
 
 	if err != nil {
 		log.Printf("Error getting contexts: %v\n", err)
@@ -64,10 +64,72 @@ func ListContextHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(bytes)
 }
 
+func GetContextBodyHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("Received request for GetContextBodyHandler")
+
+	auth := Authenticate(w, r, true)
+	if auth == nil {
+		return
+	}
+
+	vars := mux.Vars(r)
+	planId := vars["planId"]
+	contextId := vars["contextId"]
+	log.Println("planId:", planId, "contextId:", contextId)
+
+	if authorizePlan(w, planId, auth) == nil {
+		return
+	}
+
+	var err error
+	ctx, cancel := context.WithCancel(context.Background())
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	if unlockFn == nil {
+		return
+	} else {
+		defer func() {
+			(*unlockFn)(err)
+		}()
+	}
+
+	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, true, false)
+	if err != nil {
+		log.Printf("Error getting contexts: %v\n", err)
+		http.Error(w, "Error getting contexts: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var targetContext *db.Context
+	for _, dbContext := range dbContexts {
+		if dbContext.Id == contextId {
+			targetContext = dbContext
+			break
+		}
+	}
+
+	if targetContext == nil {
+		http.Error(w, "Context not found", http.StatusNotFound)
+		return
+	}
+
+	response := shared.GetContextBodyResponse{
+		Body: targetContext.Body,
+	}
+
+	bytes, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error marshalling response: %v\n", err)
+		http.Error(w, "Error marshalling response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(bytes)
+}
+
 func LoadContextHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for LoadContextHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -98,7 +160,7 @@ func LoadContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, _ := loadContexts(w, r, auth, &requestBody, plan, branchName)
+	res, _ := loadContexts(w, r, auth, &requestBody, plan, branchName, nil)
 
 	if res == nil {
 		return
@@ -120,7 +182,7 @@ func LoadContextHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateContextHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for UpdateContextHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -152,7 +214,7 @@ func UpdateContextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -212,7 +274,7 @@ func UpdateContextHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteContextHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for DeleteContextHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -253,7 +315,7 @@ func DeleteContextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -262,7 +324,7 @@ func DeleteContextHandler(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, false)
+	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, false, false)
 
 	if err != nil {
 		log.Printf("Error getting contexts: %v\n", err)

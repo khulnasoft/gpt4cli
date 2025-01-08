@@ -9,16 +9,23 @@ This is an overview of all the environment variables that can be used with Gpt4c
 
 ## CLI
 
+### General
+
+```bash
+GPT4CLI_ENV=development # Set this to 'development' to default to the local development server instead of Gpt4cli Cloud when working on Gpt4cli itself.
+GPT4CLI_API_HOST= # Defaults to 'http://localhost:8080' if GPT4CLI_ENV is development, otherwise it's 'https://api.gpt4cli.khulnasoft.com'—override this to use a different host.
+```
+
 ### LLM Providers
 
 ```bash
-OPENAI_API_BASE= # Your OpenAI server, such as http://localhost:1234/v1 Defaults to empty.
-OPENAI_API_KEY= # Your OpenAI key.
-
-# optional - set API keys for any other providers you're using
-export OPENROUTER_API_KEY= # Your OpenRouter.ai API key.
-export TOGETHER_API_KEY = # Your Together.ai API key.
+OPENAI_API_KEY= # Your OpenAI key (if self-hosting or using BYO API Key mode with Gpt4cli Cloud)
+OPENROUTER_API_KEY= # Your OpenRouter.ai API key (if self-hosting or using BYO API Key mode with Gpt4cli Cloud)
+TOGETHER_API_KEY = # Your Together.ai API key (if self-hosting or using BYO API Key mode with Gpt4cli Cloud)
 # etc.
+
+OPENAI_API_BASE= # Your OpenAI server, such as http://localhost:1234/v1 Defaults to empty.
+OPENAI_ORG_ID= # Your OpenAI organization ID. Defaults to empty.
 ```
 
 ### Upgrades
@@ -32,8 +39,6 @@ GPT4CLI_SKIP_UPGRADE= # Set this to '1' to skip the auto-upgrade check when runn
 Check out the [Development Guide](./development.md) for more details.
 
 ```bash
-GPT4CLI_ENV=development # Set this to 'development' to default to the local development server instead of Gpt4cli Cloud when working on Gpt4cli itself.
-GPT4CLI_API_HOST= # Defaults to http://localhost:8080 if GPT4CLI_ENV is development, otherwise it's https://api.gpt4cli.khulnasoft.com—override this to use a different host.
 GPT4CLI_OUT_DIR=/usr/local/bin # Where the development binary should be output when using dev.sh
 GPT4CLI_DEV_CLI_OUT_DIR=/usr/local/bin # Where the development binary should be output when using dev.sh
 GPT4CLI_DEV_CLI_NAME=gpt4cli-dev # The name of the development binary when using dev.sh
@@ -50,6 +55,7 @@ Check out the [Self-Hosting Guide](./hosting/self-hosting.md) for more details.
 ```bash
 GOENV=development # Whether to run in development or production mode. Must be 'development' or 'production'
 GPT4CLI_BASE_DIR= # The base directory to read and write files. Defaults to '$HOME/gpt4cli-server' in development mode, '/gpt4cli-server' in production.
+API_HOST= # The host the API server listens on. Defaults to 'http://localhost:$PORT'. In production mode, should be a host like 'https://api.your-domain.ai'.
 PORT=8080 # The port the server listens on. Defaults to 8080.
 ```
 
@@ -74,6 +80,13 @@ If you're *not* using docker-compose, you'll need a `DATABASE_URL` environment v
 ```bash
 DATABASE_URL=postgres://gpt4cli:<password>@<host>:<port>/gpt4cli?sslmode=disable
 ```
+
+If you're running in production mode, you'll also need to set `API_HOST` to the host the API server is running on.
+
+```bash
+API_HOST= https://api.your-domain.ai # The host of the API server in production mode. Defaults to 'http://localhost:$PORT' in development mode.
+```
+
 
 ### SMTP
 

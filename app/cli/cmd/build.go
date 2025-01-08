@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var buildBg bool
-
 var buildCmd = &cobra.Command{
 	Use:     "build",
 	Aliases: []string{"b"},
@@ -24,27 +22,34 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(buildCmd)
-	buildCmd.Flags().BoolVar(&buildBg, "bg", false, "Execute autonomously in the background")
+
+	initExecFlags(buildCmd, initExecFlagsParams{
+		omitFile:        true,
+		omitNoBuild:     true,
+		omitEditor:      true,
+		omitStop:        true,
+		omitAutoContext: true,
+	})
 }
 
 func build(cmd *cobra.Command, args []string) {
 	auth.MustResolveAuthWithOrg()
 	lib.MustResolveProject()
+	mustSetPlanExecFlags(cmd)
 
-	if lib.CurrentPlanId == "" {
-		term.OutputNoCurrentPlanErrorAndExit()
+	var apiKeys map[string]string
+	if !auth.Current.IntegratedModelsMode {
+		apiKeys = lib.MustVerifyApiKeys()
 	}
-
-	apiKeys := lib.MustVerifyApiKeys()
 
 	didBuild, err := plan_exec.Build(plan_exec.ExecParams{
 		CurrentPlanId: lib.CurrentPlanId,
 		CurrentBranch: lib.CurrentBranch,
 		ApiKeys:       apiKeys,
-		CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool) {
-			return lib.MustCheckOutdatedContext(false, maybeContexts)
+		CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
+			return lib.CheckOutdatedContextWithOutput(false, tellAutoContext, maybeContexts)
 		},
-	}, buildBg)
+	}, tellBg)
 
 	if err != nil {
 		term.OutputErrorAndExit("Error building plan: %v", err)
@@ -56,12 +61,28 @@ func build(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	if buildBg {
+	if tellBg {
 		fmt.Println("🏗️ Building plan in the background")
 		fmt.Println()
 		term.PrintCmds("", "ps", "connect", "stop")
+	} else if tellAutoApply {
+		flags := lib.ApplyFlags{
+			AutoConfirm: true,
+			AutoCommit:  autoCommit,
+			NoCommit:    !autoCommit,
+			NoExec:      noExec,
+			AutoExec:    autoExec,
+			AutoDebug:   autoDebug,
+		}
+
+		lib.MustApplyPlan(
+			lib.CurrentPlanId,
+			lib.CurrentBranch,
+			flags,
+			plan_exec.GetOnApplyExecFail(flags),
+		)
 	} else {
 		fmt.Println()
-		term.PrintCmds("", "changes", "apply", "reject", "log")
+		term.PrintCmds("", "diff", "diff --ui", "apply", "reject", "log")
 	}
 }
