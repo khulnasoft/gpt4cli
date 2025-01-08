@@ -18,10 +18,9 @@ func init() {
 }
 
 var changesCmd = &cobra.Command{
-	Use:     "changes",
-	Aliases: []string{"ch"},
-	Short:   "View, copy, or manage changes for the current plan",
-	Run:     changes,
+	Use:   "changes",
+	Short: "View, copy, or manage changes for the current plan",
+	Run:   changes,
 }
 
 func changes(cmd *cobra.Command, args []string) {
@@ -75,14 +74,17 @@ func changes(cmd *cobra.Command, args []string) {
 		if !viewIncomplete {
 			fmt.Println("This plan has unbuilt changes. Building now.")
 
-			apiKeys := lib.MustVerifyApiKeys()
+			var apiKeys map[string]string
+			if !auth.Current.IntegratedModelsMode {
+				apiKeys = lib.MustVerifyApiKeys()
+			}
 
 			didBuild, err := plan_exec.Build(plan_exec.ExecParams{
 				CurrentPlanId: lib.CurrentPlanId,
 				CurrentBranch: lib.CurrentBranch,
 				ApiKeys:       apiKeys,
-				CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool) {
-					return lib.MustCheckOutdatedContext(true, maybeContexts)
+				CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
+					return lib.CheckOutdatedContextWithOutput(true, false, maybeContexts)
 				},
 			}, false)
 

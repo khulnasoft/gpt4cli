@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/format"
 	"gpt4cli/lib"
 	"gpt4cli/term"
-	"os"
 	"strconv"
 
 	"github.com/fatih/color"
@@ -52,6 +52,9 @@ func listContext(cmd *cobra.Command, args []string) {
 		t, icon := context.TypeAndIcon()
 
 		name := context.Name
+		if name == "" {
+			name = context.FilePath
+		}
 		if len(name) > 40 {
 			name = name[:20] + "⋯" + name[len(name)-20:]
 		}

@@ -3,10 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"gpt4cli-server/db"
 	"io"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
 	"github.com/khulnasoft/gpt4cli/shared"
@@ -15,7 +15,7 @@ import (
 func ListLogsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for ListLogsHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -32,7 +32,7 @@ func ListLogsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -70,7 +70,7 @@ func ListLogsHandler(w http.ResponseWriter, r *http.Request) {
 func RewindPlanHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for RewindPlanHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -102,7 +102,7 @@ func RewindPlanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {

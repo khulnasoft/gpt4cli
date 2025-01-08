@@ -213,7 +213,7 @@ gpt4cli clear
 
 ### tell
 
-Describe a task, ask a question, or chat.
+Describe a task.
 
 ```bash
 gpt4cli tell -f prompt.txt # from file
@@ -231,6 +231,12 @@ g4c t # alias
 
 `--bg`: Run task in the background.
 
+`--yes/-y`: Automatically confirm context updates.
+
+`--apply/-a`: Automatically apply changes (and confirm context updates).
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed.
+
 ### continue
 
 Continue the plan.
@@ -247,6 +253,12 @@ g4c c # alias
 
 `--bg`: Run task in the background.
 
+`--yes/-y`: Automatically confirm context updates.
+
+`--apply/-a`: Automatically apply changes (and confirm context updates).
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed.
+
 ### build
 
 Build any unbuilt pending changes from the plan conversation.
@@ -258,17 +270,53 @@ g4c b # alias
 
 `--bg`: Build in the background.
 
+`--yes/-y`: Automatically confirm context updates.
+
+`--apply/-a`: Automatically apply changes (and confirm context updates).
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed.
+
+### chat
+
+Ask a question or chat without making any changes.
+
+```bash
+gpt4cli chat "is it clear from the context how to add a new line chart?"
+g4c ct # alias
+```
+
+`--file/-f`: File path containing prompt.
+
+`--yes/-y`: Automatically confirm context updates.
+
+### debug
+
+Repeatedly run a command and auto-apply fixes until it succeeds. Defaults to 5 tries before giving up.
+
+```bash
+gpt4cli debug 'npm test' # try 5 times or until it succeeds
+gpt4cli debug 10 'npm test' # try 10 times or until it succeeds
+g4c db 'npm test' # alias
+```
+
+`--commit/-c`: Commit changes to git on each try.
+
 ## Changes
 
 ### diff
 
-Review pending changes in 'git diff' format.
+Review pending changes in 'git diff' format or in a local browser UI.
 
 ```bash
 gpt4cli diff
+gpt4cli diff --ui
 ```
 
 `--plain/-p`: Output diffs in plain text with no ANSI codes.
+
+`--ui/-u`: Review pending changes in a local browser UI.
+
+`--side-by-side/-s`: Show diffs UI in side-by-side view rather than line-by-line.
 
 ### changes
 
@@ -288,6 +336,10 @@ g4c ap # alias
 ```
 
 `--yes/-y`: Skip confirmation.
+
+`--commit/-c`: Commit changes to git.
+
+`--no-commit/-n`: Don't commit changes to git.
 
 ### reject
 
@@ -569,7 +621,9 @@ Sign in, accept an invite, or create an account.
 gpt4cli sign-in
 ```
 
-Gpt4cli will prompt you for all required information to sign in, accept an invite, or create an account.
+`--code/-c`: Sign in with a code from the Gpt4cli Cloud web UI.
+
+Unless you pass `--code/-c` (from the Gpt4cli Cloud web UI), Gpt4cli will prompt you for all required information to sign in, accept an invite, or create an account.
 
 ### invite
 
@@ -599,3 +653,28 @@ List users and pending invites in your org.
 gpt4cli users
 ```
 
+## Gpt4cli Cloud
+
+### billing
+
+Show the billing settings page.
+
+```bash
+gpt4cli billing
+```
+
+### credits
+
+Show your current credits balance.
+
+```bash
+gpt4cli credits
+```
+
+### usage
+
+Show the credits usage log, including all model calls and responses.
+
+```bash
+gpt4cli usage
+```

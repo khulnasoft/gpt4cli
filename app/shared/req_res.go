@@ -6,27 +6,31 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
-type StartTrialResponse struct {
-	UserId   string `json:"userId"`
-	Token    string `json:"token"`
-	OrgId    string `json:"orgId"`
-	Email    string `json:"email"`
-	UserName string `json:"userName"`
-	OrgName  string `json:"orgName"`
-}
-
 type CreateEmailVerificationRequest struct {
-	Email  string `json:"email"`
-	UserId string `json:"userId"`
+	Email         string `json:"email"`
+	UserId        string `json:"userId"`
+	RequireUser   bool   `json:"requireUser"`
+	RequireNoUser bool   `json:"requireNoUser"`
 }
 
 type CreateEmailVerificationResponse struct {
 	HasAccount bool `json:"hasAccount"`
 }
 
-type SignInRequest struct {
+type VerifyEmailPinRequest struct {
 	Email string `json:"email"`
 	Pin   string `json:"pin"`
+}
+
+type SignInRequest struct {
+	Email        string `json:"email"`
+	Pin          string `json:"pin"`
+	IsSignInCode bool   `json:"isSignInCode"`
+}
+
+type UiSignInToken struct {
+	Pin        string `json:"pin"`
+	RedirectTo string `json:"redirectTo"`
 }
 
 type CreateAccountRequest struct {
@@ -116,6 +120,12 @@ type TellPlanRequest struct {
 	ConnectStream  bool              `json:"connectStream"`
 	AutoContinue   bool              `json:"autoContinue"`
 	IsUserContinue bool              `json:"isUserContinue"`
+	IsUserDebug    bool              `json:"isUserDebug"`
+	IsApplyDebug   bool              `json:"isApplyDebug"`
+	IsChatOnly     bool              `json:"isChatOnly"`
+	AutoContext    bool              `json:"autoContext"`
+	ExecEnabled    bool              `json:"execEnabled"`
+	OsDetails      string            `json:"osDetails"`
 	ApiKey         string            `json:"apiKey"`   // deprecated
 	Endpoint       string            `json:"endpoint"` // deprecated
 	ApiKeys        map[string]string `json:"apiKeys"`
@@ -150,6 +160,8 @@ type RespondMissingFileRequest struct {
 	Body     string                   `json:"body"`
 }
 
+type FileMapInputs map[string]string
+
 type LoadContextParams struct {
 	ContextType     ContextType           `json:"contextType"`
 	Name            string                `json:"name"`
@@ -158,6 +170,8 @@ type LoadContextParams struct {
 	Body            string                `json:"body"`
 	ForceSkipIgnore bool                  `json:"forceSkipIgnore"`
 	ImageDetail     openai.ImageURLDetail `json:"imageDetail"`
+
+	MapInputs FileMapInputs `json:"mapInputs"`
 
 	// For naming piped data
 	ApiKeys     map[string]string `json:"apiKeys"`
@@ -176,6 +190,34 @@ type LoadContextResponse struct {
 }
 
 type UpdateContextParams struct {
+	Body            string            `json:"body"`
+	InputShas       map[string]string `json:"inputShas"`
+	MapBodies       FileMapBodies     `json:"mapBodies"`
+	RemovedMapPaths []string          `json:"removedMapPaths"`
+}
+
+type GetFileMapRequest struct {
+	MapInputs FileMapInputs `json:"mapInputs"`
+}
+
+type GetFileMapResponse struct {
+	MapBodies FileMapBodies `json:"mapBodies"`
+}
+
+type LoadCachedFileMapRequest struct {
+	FilePaths []string `json:"filePaths"`
+}
+
+type LoadCachedFileMapResponse struct {
+	LoadRes      *LoadContextResponse `json:"loadRes"`
+	CachedByPath map[string]bool      `json:"cachedByPath"`
+}
+
+type GetContextBodyRequest struct {
+	ContextId string `json:"contextId"`
+}
+
+type GetContextBodyResponse struct {
 	Body string `json:"body"`
 }
 
@@ -227,6 +269,22 @@ type UpdateSettingsResponse struct {
 	Msg string `json:"msg"`
 }
 
+type UpdatePlanConfigRequest struct {
+	Config *PlanConfig `json:"config"`
+}
+
+type UpdateDefaultPlanConfigRequest struct {
+	Config *PlanConfig `json:"config"`
+}
+
+type GetPlanConfigResponse struct {
+	Config *PlanConfig `json:"config"`
+}
+
+type GetDefaultPlanConfigResponse struct {
+	Config *PlanConfig `json:"config"`
+}
+
 type ListUsersResponse struct {
 	Users            []*User             `json:"users"`
 	OrgUsersByUserId map[string]*OrgUser `json:"orgUsersByUserId"`
@@ -240,4 +298,16 @@ type ApplyPlanRequest struct {
 
 type RenamePlanRequest struct {
 	Name string `json:"name"`
+}
+
+// Cloud requests and responses
+type CreditsLogRequest struct {
+	PageSize int `json:"pageSize"`
+	Page     int `json:"page"`
+}
+
+type CreditsLogResponse struct {
+	Transactions []*CreditsTransaction `json:"transactions"`
+	NumPages     int                   `json:"numPages"`
+	NumPagesMax  bool                  `json:"numPagesMax"`
 }

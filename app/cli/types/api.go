@@ -12,16 +12,19 @@ type OnStreamPlanParams struct {
 type OnStreamPlan func(params OnStreamPlanParams)
 
 type ApiClient interface {
-	StartTrial() (*shared.StartTrialResponse, *shared.ApiError)
-	ConvertTrial(req shared.ConvertTrialRequest) (*shared.SessionResponse, *shared.ApiError)
+	CreateCliTrialSession() (string, *shared.ApiError)
+	GetCliTrialSession(token string) (*shared.SessionResponse, *shared.ApiError)
 
 	CreateEmailVerification(email, customHost, userId string) (*shared.CreateEmailVerificationResponse, *shared.ApiError)
 
+	CreateSignInCode() (string, *shared.ApiError)
+
 	CreateAccount(req shared.CreateAccountRequest, customHost string) (*shared.SessionResponse, *shared.ApiError)
 	SignIn(req shared.SignInRequest, customHost string) (*shared.SessionResponse, *shared.ApiError)
+
 	SignOut() *shared.ApiError
 
-	GetOrgSession() *shared.ApiError
+	GetOrgSession() (*shared.Org, *shared.ApiError)
 	ListOrgs() ([]*shared.Org, *shared.ApiError)
 	CreateOrg(req shared.CreateOrgRequest) (*shared.CreateOrgResponse, *shared.ApiError)
 
@@ -74,6 +77,7 @@ type ApiClient interface {
 	UpdateContext(planId, branch string, req shared.UpdateContextRequest) (*shared.UpdateContextResponse, *shared.ApiError)
 	DeleteContext(planId, branch string, req shared.DeleteContextRequest) (*shared.DeleteContextResponse, *shared.ApiError)
 	ListContext(planId, branch string) ([]*shared.Context, *shared.ApiError)
+	LoadCachedFileMap(planId, branch string, req shared.LoadCachedFileMapRequest) (*shared.LoadCachedFileMapResponse, *shared.ApiError)
 
 	ListConvo(planId, branch string) ([]*shared.ConvoMessage, *shared.ApiError)
 	GetPlanStatus(planId, branch string) (string, *shared.ApiError)
@@ -90,6 +94,11 @@ type ApiClient interface {
 	GetOrgDefaultSettings() (*shared.PlanSettings, *shared.ApiError)
 	UpdateOrgDefaultSettings(req shared.UpdateSettingsRequest) (*shared.UpdateSettingsResponse, *shared.ApiError)
 
+	GetPlanConfig(planId string) (*shared.PlanConfig, *shared.ApiError)
+	UpdatePlanConfig(planId string, req shared.UpdatePlanConfigRequest) *shared.ApiError
+	GetDefaultPlanConfig() (*shared.PlanConfig, *shared.ApiError)
+	UpdateDefaultPlanConfig(req shared.UpdateDefaultPlanConfigRequest) *shared.ApiError
+
 	CreateCustomModel(model *shared.AvailableModel) *shared.ApiError
 	ListCustomModels() ([]*shared.AvailableModel, *shared.ApiError)
 	DeleteAvailableModel(modelId string) *shared.ApiError
@@ -97,4 +106,9 @@ type ApiClient interface {
 	CreateModelPack(set *shared.ModelPack) *shared.ApiError
 	ListModelPacks() ([]*shared.ModelPack, *shared.ApiError)
 	DeleteModelPack(setId string) *shared.ApiError
+
+	GetCreditsTransactions(pageSize, pageNum int) (*shared.CreditsLogResponse, *shared.ApiError)
+	GetFileMap(req shared.GetFileMapRequest) (*shared.GetFileMapResponse, *shared.ApiError)
+	GetContextBody(planId, branch, contextId string) (*shared.GetContextBodyResponse, *shared.ApiError)
+	AutoLoadContext(planId, branch string, req shared.LoadContextRequest) (*shared.LoadContextResponse, *shared.ApiError)
 }

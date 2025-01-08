@@ -3,42 +3,15 @@ package auth
 import (
 	"fmt"
 	"gpt4cli/term"
-	"gpt4cli/types"
 
 	"github.com/fatih/color"
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const (
-	AuthFreeTrialOption = "Start an anonymous trial on Gpt4cli Cloud (no email required)"
-	AuthAccountOption   = "Sign in, accept an invite, or create an account"
+	AuthTrialOption   = "Start a trial on Gpt4cli Cloud"
+	AuthAccountOption = "Sign in, accept an invite, or create an account"
 )
-
-func promptInitialAuth() error {
-	selected, err := term.SelectFromList("👋 Hey there!\nIt looks like this is your first time using Gpt4cli on this computer.\nWhat would you like to do?", []string{AuthFreeTrialOption, AuthAccountOption})
-
-	if err != nil {
-		return fmt.Errorf("error selecting auth option: %v", err)
-	}
-
-	switch selected {
-	case AuthFreeTrialOption:
-		err = startTrial()
-
-		if err != nil {
-			return fmt.Errorf("error starting trial: %v", err)
-		}
-
-	case AuthAccountOption:
-		err = SelectOrSignInOrCreate()
-
-		if err != nil {
-			return fmt.Errorf("error selecting or signing in to account: %v", err)
-		}
-	}
-
-	return nil
-}
 
 const AddAccountOption = "Add another account"
 
@@ -79,7 +52,7 @@ func SelectOrSignInOrCreate() error {
 		return nil
 	}
 
-	var selected *types.ClientAccount
+	var selected *shared.ClientAccount
 	for i, opt := range options {
 		if selectedOpt == opt {
 			selected = accounts[i]
@@ -91,7 +64,7 @@ func SelectOrSignInOrCreate() error {
 		return fmt.Errorf("error selecting account: account not found")
 	}
 
-	setAuth(&types.ClientAuth{
+	setAuth(&shared.ClientAuth{
 		ClientAccount: *selected,
 	})
 
@@ -103,23 +76,25 @@ func SelectOrSignInOrCreate() error {
 		return fmt.Errorf("error listing orgs: %v", apiErr.Msg)
 	}
 
-	orgId, orgName, err := resolveOrgAuth(orgs)
+	org, err := resolveOrgAuth(orgs)
 
 	if err != nil {
 		return fmt.Errorf("error resolving org: %v", err)
 	}
 
-	err = setAuth(&types.ClientAuth{
-		ClientAccount: *selected,
-		OrgId:         orgId,
-		OrgName:       orgName,
+	err = setAuth(&shared.ClientAuth{
+		ClientAccount:        *selected,
+		OrgId:                org.Id,
+		OrgName:              org.Name,
+		OrgIsTrial:           org.IsTrial,
+		IntegratedModelsMode: org.IntegratedModelsMode,
 	})
 
 	if err != nil {
 		return fmt.Errorf("error setting auth: %v", err)
 	}
 
-	apiErr = apiClient.GetOrgSession()
+	_, apiErr = apiClient.GetOrgSession()
 
 	if apiErr != nil {
 		return fmt.Errorf("error getting org session: %v", apiErr.Msg)
@@ -129,6 +104,43 @@ func SelectOrSignInOrCreate() error {
 	fmt.Println()
 
 	term.PrintCmds("", "new", "plans")
+
+	return nil
+}
+
+func SignInWithCode(code, host string) error {
+	term.StartSpinner("")
+	res, apiErr := apiClient.SignIn(shared.SignInRequest{
+		Pin:          code,
+		IsSignInCode: true,
+	}, host)
+	term.StopSpinner()
+
+	if apiErr != nil {
+		return fmt.Errorf("error signing in: %v", apiErr.Msg)
+	}
+
+	return handleSignInResponse(res, host)
+}
+
+func promptInitialAuth() error {
+	selected, err := term.SelectFromList("👋 Hey there!\nIt looks like this is your first time using Gpt4cli on this computer.\nWhat would you like to do?", []string{AuthTrialOption, AuthAccountOption})
+
+	if err != nil {
+		return fmt.Errorf("error selecting auth option: %v", err)
+	}
+
+	switch selected {
+	case AuthTrialOption:
+		startTrial()
+
+	case AuthAccountOption:
+		err = SelectOrSignInOrCreate()
+
+		if err != nil {
+			return fmt.Errorf("error selecting or signing in to account: %v", err)
+		}
+	}
 
 	return nil
 }
@@ -186,9 +198,6 @@ func promptSignInNewAccount() error {
 		}
 	}
 
-	fmt.Printf("✅ Signed in as %s | Org: %s\n", color.New(color.Bold, term.ColorHiGreen).Sprintf("<%s> %s", Current.UserName, Current.Email), color.New(term.ColorHiCyan).Sprint(Current.OrgName))
-	fmt.Println()
-
 	term.PrintCmds("", "new", "plans")
 
 	return nil
@@ -204,7 +213,7 @@ func verifyEmail(email, host string) (bool, string, error) {
 		return false, "", fmt.Errorf("error creating email verification: %v", apiErr.Msg)
 	}
 
-	fmt.Println("✉️  You'll now receive a 6 character pin by email. It will be valid for 5 minutes.")
+	fmt.Println("✉️  You'll now receive a 6 character pin by email. It will be valid for 10 minutes.")
 
 	pin, err := term.GetUserPasswordInput("Please enter your pin:")
 
@@ -227,8 +236,12 @@ func signIn(email, pin, host string) error {
 		return fmt.Errorf("error signing in: %v", apiErr.Msg)
 	}
 
-	err := setAuth(&types.ClientAuth{
-		ClientAccount: types.ClientAccount{
+	return handleSignInResponse(res, host)
+}
+
+func handleSignInResponse(res *shared.SessionResponse, host string) error {
+	err := setAuth(&shared.ClientAuth{
+		ClientAccount: shared.ClientAccount{
 			Email:    res.Email,
 			UserId:   res.UserId,
 			UserName: res.UserName,
@@ -243,14 +256,15 @@ func signIn(email, pin, host string) error {
 		return fmt.Errorf("error setting auth: %v", err)
 	}
 
-	orgId, orgName, err := resolveOrgAuth(res.Orgs)
+	org, err := resolveOrgAuth(res.Orgs)
 
 	if err != nil {
 		return fmt.Errorf("error resolving org: %v", err)
 	}
 
-	Current.OrgId = orgId
-	Current.OrgName = orgName
+	Current.OrgId = org.Id
+	Current.OrgName = org.Name
+	Current.IntegratedModelsMode = org.IntegratedModelsMode
 
 	err = writeCurrentAuth()
 
@@ -284,8 +298,8 @@ func createAccount(email, pin, host string) error {
 		return fmt.Errorf("error creating account: %v", apiErr.Msg)
 	}
 
-	err = setAuth(&types.ClientAuth{
-		ClientAccount: types.ClientAccount{
+	err = setAuth(&shared.ClientAuth{
+		ClientAccount: shared.ClientAccount{
 			Email:    res.Email,
 			UserId:   res.UserId,
 			UserName: res.UserName,
@@ -300,20 +314,24 @@ func createAccount(email, pin, host string) error {
 		return fmt.Errorf("error setting auth: %v", err)
 	}
 
-	orgId, orgName, err := resolveOrgAuth(res.Orgs)
+	org, err := resolveOrgAuth(res.Orgs)
 
 	if err != nil {
 		return fmt.Errorf("error resolving org: %v", err)
 	}
 
-	Current.OrgId = orgId
-	Current.OrgName = orgName
+	Current.OrgId = org.Id
+	Current.OrgName = org.Name
+	Current.IntegratedModelsMode = org.IntegratedModelsMode
 
 	err = writeCurrentAuth()
 
 	if err != nil {
 		return fmt.Errorf("error writing auth: %v", err)
 	}
+
+	fmt.Printf("✅ Signed in as %s | Org: %s\n", color.New(color.Bold, term.ColorHiGreen).Sprintf("<%s> %s", Current.UserName, Current.Email), color.New(term.ColorHiCyan).Sprint(Current.OrgName))
+	fmt.Println()
 
 	return nil
 }

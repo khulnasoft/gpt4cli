@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/term"
-	"path/filepath"
 	"strconv"
 	"strings"
 

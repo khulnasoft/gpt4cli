@@ -3,11 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"gpt4cli-server/db"
 	modelPlan "gpt4cli-server/model/plan"
 	"gpt4cli-server/types"
-	"log"
-	"net/http"
 	"time"
 
 	"github.com/khulnasoft/gpt4cli/shared"

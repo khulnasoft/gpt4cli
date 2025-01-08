@@ -3,16 +3,16 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"gpt4cli-server/db"
-	"gpt4cli-server/types"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
+	"gpt4cli-server/types"
 	"runtime/debug"
 
 	"github.com/gorilla/mux"
 )
 
-func lockRepo(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth, scope db.LockScope, ctx context.Context, cancelFn context.CancelFunc, requireBranch bool) *func(err error) {
+func LockRepo(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth, scope db.LockScope, ctx context.Context, cancelFn context.CancelFunc, requireBranch bool) *func(err error) {
 	vars := mux.Vars(r)
 	planId := vars["planId"]
 	branch := vars["branch"]
@@ -23,17 +23,37 @@ func lockRepo(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth, sc
 		return nil
 	}
 
-	repoLockId, err := db.LockRepo(
-		db.LockRepoParams{
-			OrgId:    auth.OrgId,
-			UserId:   auth.User.Id,
-			PlanId:   planId,
-			Branch:   branch,
-			Scope:    scope,
-			Ctx:      ctx,
-			CancelFn: cancelFn,
-		},
-	)
+	return lockRepo(w, r, auth, scope, ctx, cancelFn, planId, branch)
+}
+
+func LockRepoForBranch(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth, scope db.LockScope, ctx context.Context, cancelFn context.CancelFunc, branch string) *func(err error) {
+	vars := mux.Vars(r)
+	planId := vars["planId"]
+
+	return lockRepo(w, r, auth, scope, ctx, cancelFn, planId, branch)
+}
+
+func lockRepo(w http.ResponseWriter, r *http.Request, auth *types.ServerAuth, scope db.LockScope, ctx context.Context, cancelFn context.CancelFunc, planId, branch string) *func(err error) {
+	params := db.LockRepoParams{
+		PlanId:   planId,
+		Branch:   branch,
+		Scope:    scope,
+		Ctx:      ctx,
+		CancelFn: cancelFn,
+	}
+	if auth == nil {
+		// error out
+		log.Println("Auth required")
+		http.Error(w, "Auth required", http.StatusInternalServerError)
+		return nil
+	} else {
+		params.OrgId = auth.OrgId
+		if auth.User != nil {
+			params.UserId = auth.User.Id
+		}
+	}
+
+	repoLockId, err := db.LockRepo(params)
 
 	if err != nil {
 		log.Printf("Error locking repo: %v\n", err)

@@ -43,16 +43,46 @@ func Connect() error {
 
 	log.Println("connected to database")
 
-	_, err = Conn.Exec("SET TIMEZONE='UTC';")
+	if os.Getenv("GOENV") == "production" {
+		Conn.SetMaxOpenConns(500)
+		Conn.SetMaxIdleConns(100)
+	} else {
+		Conn.SetMaxOpenConns(250)
+		Conn.SetMaxIdleConns(50)
+	}
 
+	_, err = Conn.Exec("SET TIMEZONE='UTC';")
 	if err != nil {
 		return fmt.Errorf("error setting timezone: %v", err)
+	}
+
+	_, err = Conn.Exec("SET lock_timeout = '10s';")
+	if err != nil {
+		return fmt.Errorf("error setting lock timeout: %v", err)
+	}
+
+	_, err = Conn.Exec("SET statement_timeout = '10s';")
+	if err != nil {
+		return fmt.Errorf("error setting statement timeout: %v", err)
 	}
 
 	return nil
 }
 
 func MigrationsUp() error {
+	migrationsDir := "migrations"
+	if os.Getenv("MIGRATIONS_DIR") != "" {
+		migrationsDir = os.Getenv("MIGRATIONS_DIR")
+	}
+
+	return migrationsUp(migrationsDir)
+}
+
+func MigrationsUpWithDir(dir string) error {
+	return migrationsUp(dir)
+}
+
+func migrationsUp(dir string) error {
 	if Conn == nil {
 		return errors.New("db not initialized")
 	}
@@ -64,7 +94,7 @@ func MigrationsUp() error {
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
-		"file://migrations",
+		"file://"+dir,
 		"postgres", driver)
 
 	if err != nil {
@@ -73,7 +103,7 @@ func MigrationsUp() error {
 
 	// Uncomment below (and update migration version) to reset migration state to a specific version after a failure
 	// if os.Getenv("GOENV") == "development" {
-	// 	migrateVersion := 2024041500
+	// 	migrateVersion := 2024102200
 	// 	if err := m.Force(migrateVersion); err != nil {
 	// 		return fmt.Errorf("error forcing migration version: %v", err)
 	// 	}
@@ -92,13 +122,14 @@ func MigrationsUp() error {
 	// 	log.Println("ran down migrations - database was reset")
 	// }
 
-	// Uncomment below to go back ONE migration
+	// Uncomment below and edit 'stepsBack' to go back a specific number of migrations
 	// if os.Getenv("GOENV") == "development" {
-	// 	err = m.Steps(-1)
+	// 	stepsBack := 1
+	// 	err = m.Steps(-stepsBack)
 	// 	if err != nil {
 	// 		return fmt.Errorf("error running down migrations: %v", err)
 	// 	}
-	// 	log.Println("went down 1 migration")
+	// 	log.Printf("went down %d migration\n", stepsBack)
 	// }
 
 	err = m.Up()

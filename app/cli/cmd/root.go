@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"gpt4cli/term"
 	"os"
+	"gpt4cli/term"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -45,12 +45,20 @@ func Execute() {
 		color.New(color.Bold).Println("  gpt4cli [command] --help")
 		fmt.Println()
 
-		os.Exit(1)
+		color.New(color.Bold, color.BgGreen, color.FgHiWhite).Println(" Common Commands ")
+		color.New(color.Bold).Println("  gpt4cli new # create a new plan")
+		color.New(color.Bold).Println("  gpt4cli tell # tell the plan what to do")
+		color.New(color.Bold).Println("  gpt4cli continue # continue the current plan")
+		color.New(color.Bold).Println("  gpt4cli settings # show plan settings")
+		color.New(color.Bold).Println("  gpt4cli set # update plan settings")
+		fmt.Println()
 
+		os.Exit(1)
 	}
 }
 
 func run(cmd *cobra.Command, args []string) {
+
 }
 
 func init() {

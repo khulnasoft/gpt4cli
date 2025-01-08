@@ -20,6 +20,7 @@ type activeTellStreamState struct {
 	replyId                string
 	modelContext           []*db.Context
 	convo                  []*db.ConvoMessage
+	currentPlanState       *shared.CurrentPlanState
 	missingFileResponse    shared.RespondMissingFileChoice
 	summaries              []*db.ConvoSummary
 	summarizedToMessageId  string
@@ -30,6 +31,9 @@ type activeTellStreamState struct {
 	replyNumTokens         int
 	messages               []openai.ChatCompletionMessage
 	tokensBeforeConvo      int
+	totalRequestTokens     int
 	settings               *shared.PlanSettings
 	currentReplyNumRetries int
+	subtasks               []*db.Subtask
+	currentSubtask         *db.Subtask
 }

@@ -10,7 +10,7 @@ const config: Config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://docs.gpt4cli.khulnasoft.com',
+  url: 'https://docs-gpt4cli.khulnasoft.com',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/',
@@ -72,7 +72,7 @@ const config: Config = {
         },
         {
           label: 'X',
-          href: 'https://x.com/KhulnaSoft',
+          href: 'https://x.com/Gpt4cliAI',
           position: 'right',
         },
         {
@@ -84,7 +84,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',      
-      copyright: `Copyright © ${new Date().getFullYear()} KhulnaSoft, Inc.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Gpt4cliAI, Inc.`,
     },
     prism: {
       theme: prismThemes.github,

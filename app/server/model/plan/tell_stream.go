@@ -3,11 +3,12 @@ package plan
 import (
 	"context"
 	"fmt"
-	"gpt4cli-server/db"
-	"gpt4cli-server/model"
-	"gpt4cli-server/types"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
+	"gpt4cli-server/hooks"
+	"gpt4cli-server/model"
+	"gpt4cli-server/types"
 	"strings"
 	"time"
 
@@ -50,22 +51,65 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 	replyFiles := []string{}
 	chunksReceived := 0
 	maybeRedundantBacktickContent := ""
+	fileOpen := false
 
 	// Create a timer that will trigger if no chunk is received within the specified duration
 	timer := time.NewTimer(model.OPENAI_STREAM_CHUNK_TIMEOUT)
 	defer timer.Stop()
 
+	streamFinished := false
+
+	execHookOnStop := func(sendStreamErr bool) {
+		_, apiErr := hooks.ExecHook(hooks.DidSendModelRequest, hooks.HookParams{
+			Auth: auth,
+			Plan: plan,
+			DidSendModelRequestParams: &hooks.DidSendModelRequestParams{
+				InputTokens:   state.totalRequestTokens,
+				OutputTokens:  active.NumTokens,
+				ModelName:     state.settings.ModelPack.Planner.BaseModelConfig.ModelName,
+				ModelProvider: state.settings.ModelPack.Planner.BaseModelConfig.Provider,
+				ModelPackName: state.settings.ModelPack.Name,
+				ModelRole:     shared.ModelRolePlanner,
+				Purpose:       "Generated plan reply",
+			},
+		})
+
+		if apiErr != nil {
+			log.Printf("Error executing did send model request hook after cancel or error: %v\n", apiErr)
+
+			if sendStreamErr {
+				activePlan := GetActivePlan(planId, branch)
+
+				if activePlan == nil {
+					log.Printf(" Active plan not found for plan ID %s on branch %s\n", planId, branch)
+					return
+				}
+
+				activePlan.StreamDoneCh <- apiErr
+			}
+		}
+	}
+
+mainLoop:
 	for {
 		select {
 		case <-active.Ctx.Done():
 			// The main modelContext was canceled (not the timer)
 			log.Println("\nTell: stream canceled")
+			execHookOnStop(false)
 			return
 		case <-timer.C:
 			// Timer triggered because no new chunk was received in time
 			log.Println("\nTell: stream timeout due to inactivity")
-			state.onError(fmt.Errorf("stream timeout due to inactivity"), true, "", "")
-			return
+			if streamFinished {
+				log.Println("Tell stream finished—timed out waiting for usage chunk")
+				execHookOnStop(true)
+				return
+			} else {
+				state.onError(fmt.Errorf("stream timeout due to inactivity | This usually means the model is not responding."), true, "", "")
+				continue mainLoop
+			}
+
 		default:
 			response, err := stream.Recv()
 
@@ -75,33 +119,81 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					<-timer.C
 				}
 				timer.Reset(model.OPENAI_STREAM_CHUNK_TIMEOUT)
-			}
-
-			if err != nil {
+			} else {
 				if err.Error() == "context canceled" {
 					log.Println("Tell: stream context canceled")
+					execHookOnStop(false)
 					return
 				}
 
+				log.Printf("Tell: error receiving stream chunk: %v\n", err)
+				execHookOnStop(true)
+				return
 			}
 
 			if len(response.Choices) == 0 {
-				log.Println("Tell: stream finished with no choices")
-				spew.Dump(response)
+				if response.Usage != nil {
 
-				state.onError(fmt.Errorf("stream finished with no choices"), true, "", "")
-				return
+					log.Println("Tell stream usage:")
+					spew.Dump(response.Usage)
+
+					_, apiErr := hooks.ExecHook(hooks.DidSendModelRequest, hooks.HookParams{
+						Auth: auth,
+						Plan: plan,
+						DidSendModelRequestParams: &hooks.DidSendModelRequestParams{
+							InputTokens:   response.Usage.PromptTokens,
+							OutputTokens:  response.Usage.CompletionTokens,
+							ModelName:     state.settings.ModelPack.Planner.BaseModelConfig.ModelName,
+							ModelProvider: state.settings.ModelPack.Planner.BaseModelConfig.Provider,
+							ModelPackName: state.settings.ModelPack.Name,
+							ModelRole:     shared.ModelRolePlanner,
+							Purpose:       "Generated plan reply",
+						},
+					})
+
+					if apiErr != nil {
+						log.Printf("Tell stream: error executing did send model request hook: %v\n", err)
+
+						// ensure the active plan is still available
+						activePlan := GetActivePlan(planId, branch)
+
+						if activePlan == nil {
+							log.Printf(" Active plan not found for plan ID %s on branch %s\n", planId, branch)
+							return
+						}
+
+						activePlan.StreamDoneCh <- apiErr
+					}
+					return
+				}
+
+				state.onError(fmt.Errorf("stream finished with no choices | This usually means the model failed to generate a valid response."), true, "", "")
+				continue mainLoop
+			}
+
+			// if stream finished and it's not a usage chunk, keeep listening for usage chunk
+			if streamFinished {
+				// log.Println("Tell stream finished—no usage chunk-will keep listening")
+				// continue
 			}
 
 			if len(response.Choices) > 1 {
-				state.onError(fmt.Errorf("stream finished with more than one choice"), true, "", "")
-				return
+				state.onError(fmt.Errorf("stream finished with more than one choice | This usually means the model failed to generate a valid response."), true, "", "")
+				continue mainLoop
 			}
 
 			choice := response.Choices[0]
 
 			if choice.FinishReason != "" {
 				log.Println("Model stream finished")
+				log.Println("Finish reason: ", choice.FinishReason)
+
+				if choice.FinishReason == "error" {
+					state.onError(fmt.Errorf("model stopped with error status | This usually means the model is not responding."), true, "", "")
+					continue mainLoop
+				}
+
+				time.Sleep(30 * time.Millisecond)
 				active.FlushStreamBuffer()
 				time.Sleep(100 * time.Millisecond)
 
@@ -113,24 +205,87 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 				err := db.SetPlanStatus(planId, branch, shared.PlanStatusDescribing, "")
 				if err != nil {
 					state.onError(fmt.Errorf("failed to set plan status to describing: %v", err), true, "", "")
-					return
+					continue mainLoop
 				}
-
-				latestSummaryCh := active.LatestSummaryCh
 
 				var generatedDescription *db.ConvoMessageDescription
 				var shouldContinue bool
-				var nextTask string
+				var subtaskFinished bool
+
+				autoLoadContextFiles := state.checkAutoLoadContext()
+				hasNewSubtasks := state.checkNewSubtasks()
+				moveFiles := state.checkMoveFileOps()
+				removeFiles := state.checkRemoveFileOps()
+				resetFiles := state.checkResetFileOps()
+				var allSubtasksFinished bool
+
+				if req.BuildMode == shared.BuildModeAuto {
+					getBuildState := func() *activeBuildStreamState {
+						return &activeBuildStreamState{
+							tellState:     state,
+							clients:       clients,
+							auth:          auth,
+							currentOrgId:  currentOrgId,
+							currentUserId: currentUserId,
+							plan:          plan,
+							branch:        branch,
+							settings:      settings,
+							modelContext:  state.modelContext,
+						}
+					}
+
+					if len(moveFiles) > 0 {
+						log.Println("Detected move files, queuing builds")
+						for i, moveFile := range moveFiles {
+							getBuildState().queueBuilds([]*types.ActiveBuild{
+								{
+									ReplyId:         replyId,
+									Idx:             i,
+									Path:            moveFile.Source,
+									IsMoveOp:        true,
+									MoveDestination: moveFile.Destination,
+								},
+							})
+						}
+					}
+
+					if len(removeFiles) > 0 {
+						log.Println("Detected remove files, queuing builds")
+						for i, removeFile := range removeFiles {
+							getBuildState().queueBuilds([]*types.ActiveBuild{
+								{
+									ReplyId:    replyId,
+									Idx:        i,
+									Path:       removeFile,
+									IsRemoveOp: true,
+								},
+							})
+						}
+					}
+
+					if len(resetFiles) > 0 {
+						log.Println("Detected reset files, queuing builds")
+
+						for i, resetFile := range resetFiles {
+							getBuildState().queueBuilds([]*types.ActiveBuild{
+								{
+									ReplyId:   replyId,
+									Idx:       i,
+									Path:      resetFile,
+									IsResetOp: true,
+								},
+							})
+						}
+					}
+				}
+
 				var errCh = make(chan error, 2)
 
 				go func() {
 					if len(replyFiles) > 0 {
 						log.Println("Generating plan description")
 
-						envVar := settings.ModelPack.CommitMsg.BaseModelConfig.ApiKeyEnvVar
-						client := clients[envVar]
-
-						res, err := genPlanDescription(client, settings.ModelPack.CommitMsg, planId, branch, active.Ctx)
+						res, err := state.genPlanDescription()
 						if err != nil {
 							errCh <- fmt.Errorf("failed to generate plan description: %v", err)
 							return
@@ -141,28 +296,47 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 						generatedDescription.SummarizedToMessageId = summarizedToMessageId
 						generatedDescription.MadePlan = true
 						generatedDescription.Files = replyFiles
+
+						log.Println("Generated plan description.")
 					}
 					errCh <- nil
 				}()
 
-				go func() {
-					log.Println("Getting exec status")
-					shouldContinue, nextTask, err = state.execStatusShouldContinue(active.CurrentReplyContent, latestSummaryCh, active.Ctx)
-					if err != nil {
-						errCh <- fmt.Errorf("failed to get exec status: %v", err)
-						return
+				if req.IsChatOnly || len(autoLoadContextFiles) > 0 || hasNewSubtasks || !req.AutoContinue {
+
+					// if we're auto-loading context files, we always want to continue for at least another iteration with the loaded context (even if it's chat only)
+					if len(autoLoadContextFiles) > 0 && !hasNewSubtasks {
+						log.Printf("Auto loading context files, so continuing to planning phase")
+						shouldContinue = true
+					} else if req.IsChatOnly {
+						log.Printf("Chat only, won't continue")
+						shouldContinue = false
+					} else if hasNewSubtasks {
+						log.Printf("Has new subtasks, can continue")
+						shouldContinue = req.AutoContinue
 					}
 
-					log.Printf("Should continue: %v\n", shouldContinue)
-
 					errCh <- nil
-				}()
+				} else {
+					go func() {
+						log.Println("Getting exec status")
+						subtaskFinished, shouldContinue, err = state.execStatusShouldContinue(active.CurrentReplyContent, active.Ctx)
+						if err != nil {
+							errCh <- fmt.Errorf("failed to get exec status: %v", err)
+							return
+						}
+
+						log.Printf("Should continue: %v\n", shouldContinue)
+
+						errCh <- nil
+					}()
+				}
 
 				for i := 0; i < 2; i++ {
 					err := <-errCh
 					if err != nil {
 						state.onError(err, true, "", "")
-						return
+						continue mainLoop
 					}
 				}
 
@@ -187,7 +361,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 						Status: http.StatusInternalServerError,
 						Msg:    "Error locking repo",
 					}
-					return
+					continue mainLoop
 				}
 
 				log.Println("Locked repo for assistant reply and description")
@@ -248,22 +422,60 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 						return err
 					}
 					log.Println("Description stored")
+
+					if hasNewSubtasks || subtaskFinished {
+						if subtaskFinished && state.currentSubtask != nil {
+							log.Println("Subtask finished")
+							log.Println("Current subtask:")
+							log.Println(state.currentSubtask.Title)
+							state.currentSubtask.IsFinished = true
+
+							log.Println("Updated state. Current subtask:")
+							log.Println(state.currentSubtask)
+						}
+
+						log.Println("Storing plan subtasks")
+						err = db.StorePlanSubtasks(currentOrgId, planId, state.subtasks)
+						if err != nil {
+							log.Printf("Error storing plan subtasks: %v\n", err)
+							state.onError(fmt.Errorf("failed to store plan subtasks: %v", err), false, assistantMsg.Id, convoCommitMsg)
+							return err
+						}
+
+						state.currentSubtask = nil
+						allSubtasksFinished = true
+						for _, subtask := range state.subtasks {
+							if !subtask.IsFinished {
+								state.currentSubtask = subtask
+								allSubtasksFinished = false
+								break
+							}
+						}
+
+						log.Println("Set new current subtask. Current subtask:")
+						log.Println(state.currentSubtask)
+						log.Println("All subtasks finished:", allSubtasksFinished)
+
+						log.Println("Update state of subtasks")
+						spew.Dump(state.subtasks)
+					}
+
 					// spew.Dump(description)
 
-					log.Println("Comitting reply message and description")
+					log.Println("Comitting reply message, description, and subtasks")
 
 					err = db.GitAddAndCommit(currentOrgId, planId, branch, convoCommitMsg)
 					if err != nil {
 						state.onError(fmt.Errorf("failed to commit: %v", err), false, assistantMsg.Id, convoCommitMsg)
 						return err
 					}
-					log.Println("Assistant reply and description committed")
+					log.Println("Assistant reply, description, and subtasks committed")
 
 					return nil
 				}()
 
 				if err != nil {
-					return
+					continue mainLoop
 				}
 
 				// summarize convo needs to come *after* the reply is stored in order to correctly summarize the latest message
@@ -272,15 +484,29 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 				client := clients[envVar]
 
 				// summarize in the background
-				go summarizeConvo(client, settings.ModelPack.PlanSummary, summarizeConvoParams{
-					planId:       planId,
-					branch:       branch,
-					convo:        convo,
-					summaries:    summaries,
-					userPrompt:   state.userPrompt,
-					currentOrgId: currentOrgId,
-					currentReply: active.CurrentReplyContent,
-				}, active.SummaryCtx)
+				go func() {
+					err := summarizeConvo(client, settings.ModelPack.PlanSummary, summarizeConvoParams{
+						auth:                  auth,
+						plan:                  plan,
+						branch:                branch,
+						convo:                 convo,
+						summaries:             summaries,
+						userPrompt:            state.userPrompt,
+						currentOrgId:          currentOrgId,
+						currentReply:          active.CurrentReplyContent,
+						currentReplyNumTokens: active.NumTokens,
+						modelPackName:         settings.ModelPack.Name,
+					}, active.SummaryCtx)
+
+					if err != nil {
+						log.Printf("Error summarizing convo: %v\n", err)
+						active.StreamDoneCh <- &shared.ApiError{
+							Type:   shared.ApiErrorTypeOther,
+							Status: http.StatusInternalServerError,
+							Msg:    fmt.Sprintf("Error summarizing convo: %v", err),
+						}
+					}
+				}()
 
 				log.Println("Sending active.CurrentReplyDoneCh <- true")
 
@@ -293,10 +519,49 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					ap.CurrentReplyDoneCh = nil
 				})
 
-				if req.AutoContinue && shouldContinue && iteration < MaxAutoContinueIterations {
+				log.Printf("len(autoLoadContextFiles): %d\n", len(autoLoadContextFiles))
+				if len(autoLoadContextFiles) > 0 {
+					log.Println("Sending stream message to load context files")
+
+					active.Stream(shared.StreamMessage{
+						Type:             shared.StreamMessageLoadContext,
+						LoadContextFiles: autoLoadContextFiles,
+					})
+					active.FlushStreamBuffer()
+
+					// Force a small delay to ensure message is processed
+					time.Sleep(100 * time.Millisecond)
+
+					log.Println("Waiting for client to auto load context (30s timeout)")
+
+					select {
+					case <-active.Ctx.Done():
+						log.Println("Context cancelled while waiting for auto load context")
+						execHookOnStop(true)
+						return
+					case <-time.After(30 * time.Second):
+						log.Println("Timeout waiting for auto load context")
+						state.onError(fmt.Errorf("timeout waiting for auto load context response"), true, "", "")
+						continue mainLoop
+					case <-active.AutoLoadContextCh:
+					}
+				}
+
+				// if we're auto-loading context files, we always want to continue for at least another iteration with the loaded context
+				log.Printf("req.AutoContinue: %v\n", req.AutoContinue)
+				log.Printf("shouldContinue: %v\n", shouldContinue)
+				log.Printf("iteration: %d\n", iteration)
+				log.Printf("MaxAutoContinueIterations: %d\n", MaxAutoContinueIterations)
+				log.Printf("hasNewSubtasks: %v\n", hasNewSubtasks)
+				log.Printf("len(state.subtasks): %d\n", len(state.subtasks))
+				log.Printf("allSubtasksFinished: %v\n", allSubtasksFinished)
+
+				if (len(autoLoadContextFiles) > 0 && !hasNewSubtasks) ||
+					(req.AutoContinue && shouldContinue && iteration < MaxAutoContinueIterations &&
+						!(len(state.subtasks) > 0 && allSubtasksFinished)) {
 					log.Println("Auto continue plan")
 					// continue plan
-					execTellPlan(clients, plan, branch, auth, req, iteration+1, "", false, nextTask, 0)
+					execTellPlan(clients, plan, branch, auth, req, iteration+1, "", false, 0)
 				} else {
 					var buildFinished bool
 					UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
@@ -308,11 +573,18 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 
 					time.Sleep(50 * time.Millisecond)
 
+					// note: tell-based verification is currently disabled, so 'verifyOrFinish' will pass through to 'finish' logic
+					// ShouldVerifyDiff will always be false unless we re-enable tell-based verification
 					if buildFinished {
-						log.Println("Plan is finished")
-						active.Stream(shared.StreamMessage{
-							Type: shared.StreamMessageFinished,
-						})
+						log.Println("Reply is finished and build is finished, calling verifyOrFinish")
+						active := GetActivePlan(planId, branch)
+
+						if active == nil {
+							log.Printf("Active plan not found for planId: %s, branch: %s\n", planId, branch)
+							continue mainLoop
+						}
+
+						active.Finish()
 					} else {
 						log.Println("Plan is still building")
 						log.Println("Updating status to building")
@@ -324,22 +596,31 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 								Status: http.StatusInternalServerError,
 								Msg:    "Error setting plan status to building",
 							}
-							return
+							continue mainLoop
 						}
 
 						log.Println("Sending RepliesFinished stream message")
 						active.Stream(shared.StreamMessage{
 							Type: shared.StreamMessageRepliesFinished,
 						})
+
 					}
 				}
 
-				return
+				// Reset the timer for the usage chunk
+				if !timer.Stop() {
+					<-timer.C
+				}
+				timer.Reset(model.OPENAI_USAGE_CHUNK_TIMEOUT)
+				streamFinished = true
+				continue
 			}
 
 			chunksReceived++
 			delta := choice.Delta
 			content := delta.Content
+
+			// log.Printf("content: %s\n", content)
 
 			if missingFileResponse != "" {
 				if maybeRedundantBacktickContent != "" {
@@ -348,29 +629,38 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					} else {
 						maybeRedundantBacktickContent += content
 					}
-					continue
+					continue // skip processing this chunk
 				} else if chunksReceived < 3 && strings.Contains(content, "```") {
 					// received closing triple backticks in first 3 chunks after missing file response
 					// means this is a redundant start of a new file block, so just ignore it
 
 					maybeRedundantBacktickContent += content
-					continue
+					continue // skip processing this chunk
 				}
 			}
 
-			UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
-				ap.CurrentReplyContent += content
-				ap.NumTokens++
-			})
-
-			// log.Printf("Sending stream msg: %s", content)
-			active.Stream(shared.StreamMessage{
-				Type:       shared.StreamMessageReply,
-				ReplyChunk: content,
-			})
+			// log.Printf("Adding chunk to parser: %s\n", content)
+			// log.Printf("fileOpen: %v\n", fileOpen)
 
 			replyParser.AddChunk(content, true)
 			parserRes := replyParser.Read()
+
+			if !fileOpen && parserRes.CurrentFilePath != "" {
+				log.Printf("File open: %s\n", parserRes.CurrentFilePath)
+				fileOpen = true
+			}
+
+			if fileOpen && strings.HasSuffix(content, "```") {
+				log.Println("FinishAndRead because of closing backticks")
+				parserRes = replyParser.FinishAndRead()
+				fileOpen = false
+			}
+
+			if fileOpen && parserRes.CurrentFilePath == "" {
+				// log.Println("File open but current file path is empty, closing file")
+				fileOpen = false
+			}
+
 			files := parserRes.Files
 			fileContents := parserRes.FileContents
 			state.replyNumTokens = parserRes.TotalTokens
@@ -384,6 +674,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 			// Handle file that is present in project paths but not in context
 			// Prompt user for what to do on the client side, stop the stream, and wait for user response before proceeding
 			if currentFile != "" &&
+				!req.IsChatOnly &&
 				active.ContextsByPath[currentFile] == nil &&
 				req.ProjectPaths[currentFile] && !active.AllowOverwritePaths[currentFile] {
 				log.Printf("Attempting to overwrite a file that isn't in context: %s\n", currentFile)
@@ -399,22 +690,47 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 						Status: http.StatusInternalServerError,
 						Msg:    "Error setting plan status to prompting",
 					}
-					return
+					continue mainLoop
 				}
+
+				var previousReplyContent string
+				var trimmedContent string
 
 				UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
 					ap.MissingFilePath = currentFile
+					previousReplyContent = ap.CurrentReplyContent
+					trimmedContent = replyParser.GetReplyForMissingFile()
+					ap.CurrentReplyContent = trimmedContent
 				})
+
+				log.Println("Previous reply content:")
+				log.Println(previousReplyContent)
+
+				// log.Println("Trimmed content:")
+				// log.Println(trimmedContent)
+
+				chunkToStream := getCroppedChunk(previousReplyContent+content, trimmedContent, content)
+
+				// log.Printf("chunkToStream: %s\n", chunkToStream)
+
+				if chunkToStream != "" {
+					log.Printf("Streaming remaining chunk before missing file prompt: %s\n", chunkToStream)
+					active.Stream(shared.StreamMessage{
+						Type:       shared.StreamMessageReply,
+						ReplyChunk: chunkToStream,
+					})
+				}
 
 				log.Printf("Prompting user for missing file: %s\n", currentFile)
 
 				active.Stream(shared.StreamMessage{
-					Type:            shared.StreamMessagePromptMissingFile,
-					MissingFilePath: currentFile,
+					Type:                   shared.StreamMessagePromptMissingFile,
+					MissingFilePath:        currentFile,
+					MissingFileAutoContext: active.AutoContext,
 				})
 
 				log.Printf("Stopping stream for missing file: %s\n", currentFile)
-
+				// log.Printf("Chunk content: %s\n", content)
 				// log.Printf("Current reply content: %s\n", active.CurrentReplyContent)
 
 				// stop stream for now
@@ -427,7 +743,12 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 				select {
 				case <-active.Ctx.Done():
 					log.Println("Context cancelled while waiting for missing file response")
+					execHookOnStop(true)
 					return
+				case <-time.After(30 * time.Minute): // long timeout here since we're waiting for user input
+					log.Println("Timeout waiting for missing file choice")
+					state.onError(fmt.Errorf("timeout waiting for missing file choice"), true, "", "")
+					continue mainLoop
 				case userChoice = <-active.MissingFileResponseCh:
 				}
 
@@ -437,6 +758,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 
 				UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
 					ap.MissingFilePath = ""
+					ap.CurrentReplyContent = replyParser.GetReplyForMissingFile()
 				})
 
 				log.Println("Continuing stream")
@@ -451,11 +773,21 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					iteration, // keep the same iteration
 					userChoice,
 					false,
-					"",
 					0,
 				)
 				return
 			}
+
+			UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
+				ap.CurrentReplyContent += content
+				ap.NumTokens++
+			})
+
+			// log.Printf("Sending stream msg: %s", content)
+			active.Stream(shared.StreamMessage{
+				Type:       shared.StreamMessageReply,
+				ReplyChunk: content,
+			})
 
 			// log.Println("Content:", content)
 			// log.Println("Current reply content:", active.CurrentReplyContent)
@@ -465,7 +797,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 			// log.Println("replyFiles:")
 			// spew.Dump(replyFiles)
 
-			if len(files) > len(replyFiles) {
+			if !req.IsChatOnly && len(files) > len(replyFiles) {
 				log.Printf("%d new files\n", len(files)-len(replyFiles))
 
 				for i, file := range files {
@@ -474,9 +806,14 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 					}
 
 					log.Printf("Detected file: %s\n", file)
+
 					if req.BuildMode == shared.BuildModeAuto {
 						log.Printf("Queuing build for %s\n", file)
+						// log.Println("Content:")
+						// log.Println(fileContents[i])
+
 						buildState := &activeBuildStreamState{
+							tellState:     state,
 							clients:       clients,
 							auth:          auth,
 							currentOrgId:  currentOrgId,
@@ -492,7 +829,7 @@ func (state *activeTellStreamState) listenStream(stream *openai.ChatCompletionSt
 						if err != nil {
 							log.Printf("Error getting num tokens for file %s: %v\n", file, err)
 							state.onError(fmt.Errorf("error getting num tokens for file %s: %v", file, err), true, "", "")
-							return
+							continue mainLoop
 						}
 
 						buildState.queueBuilds([]*types.ActiveBuild{{
@@ -663,4 +1000,13 @@ func (state *activeTellStreamState) onError(streamErr error, storeDesc bool, con
 		Status: http.StatusInternalServerError,
 		Msg:    "Stream error: " + streamErr.Error(),
 	}
+}
+
+func getCroppedChunk(uncropped, cropped, chunk string) string {
+	uncroppedIdx := strings.Index(uncropped, chunk)
+	if uncroppedIdx == -1 {
+		return ""
+	}
+	croppedChunk := cropped[uncroppedIdx:]
+	return croppedChunk
 }

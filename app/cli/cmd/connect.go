@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/stream"
 	streamtui "gpt4cli/stream_tui"
 	"gpt4cli/term"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -57,7 +57,7 @@ func connect(cmd *cobra.Command, args []string) {
 		}
 
 		fmt.Println()
-		term.PrintCmds("", "changes", "diff", "apply", "reject", "log")
+		term.PrintCmds("", "diff", "diff --ui", "apply", "reject", "log")
 
 		os.Exit(0)
 	}()

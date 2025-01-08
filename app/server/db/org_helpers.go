@@ -7,9 +7,11 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/lib/pq"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
+
+const orgFields = "id, name, domain, auto_add_domain_users, owner_id, is_trial, created_at, updated_at"
 
 func GetAccessibleOrgsForUser(user *User) ([]*Org, error) {
 	// direct access
@@ -17,19 +19,20 @@ func GetAccessibleOrgsForUser(user *User) ([]*Org, error) {
 	var orgs []*Org
 
 	err := Conn.Select(&orgUsers, "SELECT * FROM orgs_users WHERE user_id = $1", user.Id)
-
 	if err != nil {
 		return nil, fmt.Errorf("error getting orgs for user: %v", err)
 	}
 
+	orgRoleIdByOrgId := map[string]string{}
 	orgIds := []string{}
 	for _, ou := range orgUsers {
 		orgIds = append(orgIds, ou.OrgId)
+		orgRoleIdByOrgId[ou.OrgId] = ou.OrgRoleId
 	}
 
 	if len(orgIds) > 0 {
-		err = Conn.Select(&orgs, "SELECT * FROM orgs WHERE id = ANY($1)", pq.Array(orgIds))
-
+		query := fmt.Sprintf("SELECT %s FROM orgs WHERE id = ANY($1)", orgFields)
+		err = Conn.Select(&orgs, query, pq.Array(orgIds))
 		if err != nil {
 			return nil, fmt.Errorf("error getting orgs for user: %v", err)
 		}
@@ -40,7 +43,6 @@ func GetAccessibleOrgsForUser(user *User) ([]*Org, error) {
 
 	// access via invitation
 	invites, err := GetPendingInvitesForEmail(user.Email)
-
 	if err != nil {
 		return nil, fmt.Errorf("error getting invites for user: %v", err)
 	}
@@ -48,13 +50,13 @@ func GetAccessibleOrgsForUser(user *User) ([]*Org, error) {
 	orgIds = []string{}
 	for _, invite := range invites {
 		orgIds = append(orgIds, invite.OrgId)
+		orgRoleIdByOrgId[invite.OrgId] = invite.OrgRoleId
 	}
-
-	// log.Println(spew.Sdump(orgIds))
 
 	if len(orgIds) > 0 {
 		var orgsFromInvites []*Org
-		err = Conn.Select(&orgsFromInvites, "SELECT * FROM orgs WHERE id = ANY($1)", pq.Array(orgIds))
+		query := fmt.Sprintf("SELECT %s FROM orgs WHERE id = ANY($1)", orgFields)
+		err = Conn.Select(&orgsFromInvites, query, pq.Array(orgIds))
 		if err != nil {
 			return nil, fmt.Errorf("error getting orgs from invites: %v", err)
 		}
@@ -63,10 +65,10 @@ func GetAccessibleOrgsForUser(user *User) ([]*Org, error) {
 
 	return orgs, nil
 }
-
 func GetOrg(orgId string) (*Org, error) {
 	var org Org
-	err := Conn.Get(&org, "SELECT * FROM orgs WHERE id = $1", orgId)
+	query := fmt.Sprintf("SELECT %s FROM orgs WHERE id = $1", orgFields)
+	err := Conn.Get(&org, query, orgId)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -110,13 +112,12 @@ func CreateOrg(req *shared.CreateOrgRequest, userId string, domain *string, tx *
 		return nil, fmt.Errorf("error creating org: %v", err)
 	}
 
-	orgRoleId, err := GetOrgOwnerRoleId()
-
+	orgOwnerRoleId, err := GetOrgOwnerRoleId()
 	if err != nil {
 		return nil, fmt.Errorf("error getting org owner role id: %v", err)
 	}
 
-	_, err = tx.Exec("INSERT INTO orgs_users (org_id, user_id, org_role_id) VALUES ($1, $2, $3)", org.Id, userId, orgRoleId)
+	_, err = tx.Exec("INSERT INTO orgs_users (org_id, user_id, org_role_id) VALUES ($1, $2, $3)", org.Id, userId, orgOwnerRoleId)
 
 	if err != nil {
 		return nil, fmt.Errorf("error adding org membership: %v", err)
@@ -127,7 +128,8 @@ func CreateOrg(req *shared.CreateOrgRequest, userId string, domain *string, tx *
 
 func GetOrgForDomain(domain string) (*Org, error) {
 	var org Org
-	err := Conn.Get(&org, "SELECT * FROM orgs WHERE domain = $1", domain)
+	query := fmt.Sprintf("SELECT %s FROM orgs WHERE domain = $1", orgFields)
+	err := Conn.Get(&org, query, domain)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -147,20 +149,20 @@ func AddOrgDomainUsers(orgId, domain string, tx *sqlx.Tx) error {
 		return fmt.Errorf("error getting users for domain: %v", err)
 	}
 
+	orgMemberRoleId, err := GetOrgMemberRoleId()
+
+	if err != nil {
+		return fmt.Errorf("error getting org member role id: %v", err)
+	}
+
 	if len(usersForDomain) > 0 {
-		memberRoleId, err := GetOrgMemberRoleId()
-
-		if err != nil {
-			return fmt.Errorf("error getting org member role id: %v", err)
-		}
-
 		// create org users for each user
 		var valueStrings []string
 		var valueArgs []interface{}
 		for i, user := range usersForDomain {
 			num := i * 3
 			valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d)", num+1, num+2, num+3))
-			valueArgs = append(valueArgs, orgId, user.Id, memberRoleId)
+			valueArgs = append(valueArgs, orgId, user.Id, orgMemberRoleId)
 		}
 
 		// Join all value strings and execute a single query
@@ -212,4 +214,33 @@ func ListOrgRoles(orgId string) ([]*OrgRole, error) {
 	}
 
 	return orgRoles, nil
+}
+
+func AddToOrgForDomain(userId, domain string, tx *sqlx.Tx) (string, error) {
+	org, err := GetOrgForDomain(domain)
+
+	if err != nil {
+		return "", fmt.Errorf("error getting org for domain: %v", err)
+	}
+
+	orgOwnerRoleId, err := GetOrgOwnerRoleId()
+
+	if err != nil {
+		return "", fmt.Errorf("error getting org owner role id: %v", err)
+	}
+
+	if org != nil && org.AutoAddDomainUsers {
+		err = CreateOrgUser(org.Id, userId, orgOwnerRoleId, tx)
+
+		if err != nil {
+			return "", fmt.Errorf("error adding org user: %v", err)
+		}
+	}
+
+	var orgId string
+	if org != nil {
+		orgId = org.Id
+	}
+
+	return orgId, nil
 }

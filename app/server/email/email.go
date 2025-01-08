@@ -11,8 +11,8 @@ import (
 	"net/mail"
 )
 
-// sendEmailViaSES sends an email using AWS SES
-func sendEmailViaSES(recipient, subject, htmlBody, textBody string) error {
+// SendEmailViaSES sends an email using AWS SES
+func SendEmailViaSES(recipient, subject, htmlBody, textBody string) error {
 	sess, err := session.NewSession()
 	if err != nil {
 		return fmt.Errorf("error creating AWS session: %v", err)

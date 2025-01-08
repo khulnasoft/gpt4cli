@@ -36,7 +36,7 @@ func LockRepo(params LockRepoParams) (string, error) {
 }
 
 func lockRepo(params LockRepoParams, numRetry int) (string, error) {
-	log.Printf("locking repo. orgId: %s | planId: %s | scope: %s, \n", params.OrgId, params.PlanId, params.Scope)
+	log.Printf("locking repo. orgId: %s | planId: %s | scope: %s | branch %s | numRetry %d \n", params.OrgId, params.PlanId, params.Scope, params.Branch, numRetry)
 	// spew.Dump(params)
 
 	orgId := params.OrgId
@@ -47,6 +47,16 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 	planBuildId := params.PlanBuildId
 	ctx := params.Ctx
 	cancelFn := params.CancelFn
+
+	if orgId == "" {
+		return "", fmt.Errorf("orgId is required")
+	}
+	if planId == "" {
+		return "", fmt.Errorf("planId is required")
+	}
+	if scope != LockScopeRead && scope != LockScopeWrite {
+		return "", fmt.Errorf("invalid lock scope: %s", scope)
+	}
 
 	tx, err := Conn.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
 	if err != nil {
@@ -120,14 +130,15 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 				return "", err
 			}
 
-			log.Printf("Serialization or deadlock error, retrying transaction: %v\n", err)
+			wait := initialRetryInterval * time.Duration(1<<numRetry) * time.Duration(rand.Intn(200)*int(time.Millisecond))
 
-			wait := initialRetryInterval * time.Duration(1<<numRetry) * time.Duration(rand.Intn(500)*int(time.Millisecond))
+			log.Printf("Serialization or deadlock error, retrying transaction after %v: %v\n", wait, err)
 
 			select {
 			case <-ctx.Done():
 				return "", fmt.Errorf("context finished during retry transaction")
 			case <-time.After(wait):
+				log.Printf("Retrying transaction after %v\n", wait)
 				return lockRepo(params, numRetry+1)
 			}
 		}
@@ -136,10 +147,6 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 	}
 
 	canAcquire := true
-	canRetry := true
-
-	// log.Println("locks:")
-	// spew.Dump(locks)
 
 	for _, lock := range locks {
 		lockBranch := ""
@@ -148,21 +155,22 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 		}
 
 		if scope == LockScopeRead {
-			canAcquireThisLock := lock.Scope == LockScopeRead && lockBranch == branch
-			if !canAcquireThisLock {
+			// if we're trying to acquire a read lock, we can do so unless there's a conflicting lock
+			// a write lock always conflicts with a read lock (regardless of branch)
+			// a read lock conflicts if it's for a different branch (since it would need to checkout a different branch in the middle of an already-running read)
+			if lock.Scope == LockScopeWrite {
 				canAcquire = false
+				break
+			} else if lock.Scope == LockScopeRead {
+				if lockBranch != branch {
+					canAcquire = false
+					break
+				}
 			}
 		} else if scope == LockScopeWrite {
+			// if we're trying to acquire a write lock, we can only do so if there's no other lock (read or write)
 			canAcquire = false
-
-			// if lock is for the same plan plan and branch, allow parallel writes
-			if planId == lock.PlanId && branch == lockBranch {
-				canAcquire = true
-			}
-
-			if lock.Scope == LockScopeWrite && lockBranch == branch {
-				canRetry = false
-			}
+			break
 		} else {
 			err = fmt.Errorf("invalid lock scope: %v", scope)
 			return "", err
@@ -170,19 +178,15 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 	}
 
 	if !canAcquire {
-		log.Println("can't acquire lock. canRetry:", canRetry, "numRetry:", numRetry)
+		log.Println("can't acquire lock.", "numRetry:", numRetry)
 
-		if canRetry {
-			// 10 second timeout
-			if numRetry > 20 {
-				err = fmt.Errorf("plan is currently being updated by another user")
-				return "", err
-			}
-			time.Sleep(500 * time.Millisecond)
-			return lockRepo(params, numRetry+1)
+		// 10 second timeout
+		if numRetry > 20 {
+			err = fmt.Errorf("plan is currently being updated by another user or process")
+			return "", err
 		}
-		err = fmt.Errorf("plan is currently being updated by another user")
-		return "", err
+		time.Sleep(500 * time.Millisecond)
+		return lockRepo(params, numRetry+1)
 	}
 
 	log.Println("can acquire lock - inserting new lock")
@@ -199,13 +203,17 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 	}
 
 	newLock := &repoLock{
-		OrgId:       orgId,
-		UserId:      userId,
 		PlanId:      planId,
+		OrgId:       orgId,
 		PlanBuildId: lockPlanBuildId,
 		Scope:       scope,
 		Branch:      lockBranch,
 	}
+
+	if userId != "" {
+		newLock.UserId = &userId
+	}
+
 	// log.Println("newLock:")
 	// spew.Dump(newLock)
 
@@ -230,12 +238,12 @@ func lockRepo(params LockRepoParams, numRetry int) (string, error) {
 		return "", fmt.Errorf("error removing lock file: %v", err)
 	}
 
-	branches, err := GitListBranches(orgId, planId)
-	if err != nil {
-		return "", fmt.Errorf("error getting branches: %v", err)
-	}
+	// branches, err := GitListBranches(orgId, planId)
+	// if err != nil {
+	// 	return "", fmt.Errorf("error getting branches: %v", err)
+	// }
 
-	log.Println("branches:", branches)
+	// log.Println("branches:", branches)
 
 	if branch != "" {
 		// checkout the branch

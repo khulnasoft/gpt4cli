@@ -15,8 +15,8 @@ services:
       - gpt4cli-network
   gpt4cli-server:
     build:
-      context: .
-      dockerfile: Dockerfile.server
+      context: ./server
+      dockerfile: ./server/Dockerfile
     volumes:
       - "${GPT4CLI_DATA_DIR}:${GPT4CLI_BASE_DIR}"
       - /etc/timezone:/etc/timezone:ro
@@ -34,12 +34,7 @@ services:
       - gpt4cli-network
     depends_on:
       - gpt4cli-postgres
-    command:
-      [
-        "/bin/sh",
-        "-c",
-        "/scripts/wait-for-it.sh gpt4cli-postgres:5432 -- ./gpt4cli-server"
-      ]
+    command: [ "/bin/sh", "-c", "/scripts/wait-for-it.sh gpt4cli-postgres:5432 -- ./gpt4cli-server" ]
 
 networks:
   gpt4cli-network:

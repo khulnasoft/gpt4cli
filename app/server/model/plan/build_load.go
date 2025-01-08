@@ -2,10 +2,12 @@ package plan
 
 import (
 	"fmt"
-	"gpt4cli-server/db"
-	"gpt4cli-server/types"
 	"log"
 	"net/http"
+	"path/filepath"
+	"gpt4cli-server/db"
+	"gpt4cli-server/syntax"
+	"gpt4cli-server/types"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 )
@@ -16,7 +18,7 @@ func (state *activeBuildStreamState) loadPendingBuilds() (map[string][]*types.Ac
 	branch := state.branch
 	auth := state.auth
 
-	active, err := activatePlan(clients, plan, branch, auth, "", true)
+	active, err := activatePlan(clients, plan, branch, auth, "", true, false)
 
 	if err != nil {
 		log.Printf("Error activating plan: %v\n", err)
@@ -52,7 +54,7 @@ func (state *activeBuildStreamState) loadPendingBuilds() (map[string][]*types.Ac
 		errCh := make(chan error)
 
 		go func() {
-			res, err := db.GetPlanContexts(auth.OrgId, plan.Id, true)
+			res, err := db.GetPlanContexts(auth.OrgId, plan.Id, true, false)
 			if err != nil {
 				log.Printf("Error getting plan modelContext: %v\n", err)
 				errCh <- fmt.Errorf("error getting plan modelContext: %v", err)
@@ -134,6 +136,28 @@ func (state *activeBuildStreamFileState) loadBuildFile(activeBuild *types.Active
 
 	convoMessageId := activeBuild.ReplyId
 
+	ext := filepath.Ext(filePath)
+	parser, lang, backupParser, backupLang := syntax.GetParserForExt(ext)
+
+	if parser != nil {
+		state.parser = parser
+		state.language = lang
+	} else if backupParser != nil {
+		state.parser = backupParser
+		state.language = backupLang
+	}
+
+	if state.parser != nil {
+		validationRes, err := syntax.Validate(activePlan.Ctx, filePath, state.preBuildState)
+		if err != nil {
+			log.Printf(" error validating original file syntax: %v\n", err)
+			return fmt.Errorf("error validating original file syntax: %v", err)
+		}
+		if validationRes.HasParser && !validationRes.TimedOut && !validationRes.Valid {
+			state.preBuildStateSyntaxInvalid = true
+		}
+	}
+
 	build := &db.PlanBuild{
 		OrgId:          currentOrgId,
 		PlanId:         planId,
@@ -200,6 +224,7 @@ func (state *activeBuildStreamFileState) loadBuildFile(activeBuild *types.Active
 		errCh := make(chan error)
 
 		go func() {
+			log.Println("loadBuildFile - Getting current plan state")
 			res, err := db.GetCurrentPlanState(db.CurrentPlanStateParams{
 				OrgId:  currentOrgId,
 				PlanId: planId,

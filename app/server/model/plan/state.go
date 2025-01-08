@@ -2,9 +2,9 @@ package plan
 
 import (
 	"context"
+	"log"
 	"gpt4cli-server/db"
 	"gpt4cli-server/types"
-	"log"
 	"strings"
 	"time"
 
@@ -19,8 +19,8 @@ func GetActivePlan(planId, branch string) *types.ActivePlan {
 	return activePlans.Get(strings.Join([]string{planId, branch}, "|"))
 }
 
-func CreateActivePlan(orgId, userId, planId, branch, prompt string, buildOnly bool) *types.ActivePlan {
-	activePlan := types.NewActivePlan(orgId, userId, planId, branch, prompt, buildOnly)
+func CreateActivePlan(orgId, userId, planId, branch, prompt string, buildOnly, autoContext bool) *types.ActivePlan {
+	activePlan := types.NewActivePlan(orgId, userId, planId, branch, prompt, buildOnly, autoContext)
 	key := strings.Join([]string{planId, branch}, "|")
 
 	activePlans.Set(key, activePlan)

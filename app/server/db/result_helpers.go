@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -36,7 +37,7 @@ func StorePlanResult(result *PlanFileResult) error {
 		return fmt.Errorf("error creating results dir: %v", err)
 	}
 
-	log.Printf("Storing plan result: %s", result.Id)
+	log.Printf("Storing plan result: %s - %s", result.Path, result.Id)
 
 	err = os.WriteFile(filepath.Join(resultsDir, result.Id+".json"), bytes, 0644)
 
@@ -105,7 +106,7 @@ func GetCurrentPlanState(params CurrentPlanStateParams) (*shared.CurrentPlanStat
 	go func() {
 		var contexts []*Context
 		if params.Contexts == nil {
-			res, err := GetPlanContexts(orgId, planId, true)
+			res, err := GetPlanContexts(orgId, planId, true, false)
 			if err != nil {
 				errCh <- fmt.Errorf("error getting contexts: %v", err)
 				return
@@ -162,7 +163,7 @@ func GetCurrentPlanState(params CurrentPlanStateParams) (*shared.CurrentPlanStat
 		pendingContextsByPath[path] = context.ToApi()
 	}
 
-	log.Println("Pending contexts by path:", len(pendingContextsByPath))
+	// log.Println("Pending contexts by path:", len(pendingContextsByPath))
 
 	planState := &shared.CurrentPlanState{
 		PlanResult:               planResult,
@@ -301,6 +302,25 @@ func GetPlanFileResults(orgId, planId string) ([]*PlanFileResult, error) {
 	return results, nil
 }
 
+func GetPlanFileResultById(orgId, planId, resultId string) (*PlanFileResult, error) {
+	resultsDir := getPlanResultsDir(orgId, planId)
+
+	bytes, err := os.ReadFile(filepath.Join(resultsDir, resultId+".json"))
+
+	if err != nil {
+		return nil, fmt.Errorf("error reading result file: %v", err)
+	}
+
+	var result PlanFileResult
+	err = json.Unmarshal(bytes, &result)
+
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling result file: %v", err)
+	}
+
+	return &result, nil
+}
+
 func GetPlanResult(planFileResults []*shared.PlanFileResult) *shared.PlanResult {
 	resByPath := make(shared.PlanFileResultsByPath)
 	replacementsByPath := make(map[string][]*shared.Replacement)
@@ -338,7 +358,7 @@ func GetPlanResult(planFileResults []*shared.PlanFileResult) *shared.PlanResult 
 	}
 }
 
-func ApplyPlan(orgId, userId, branchName string, plan *Plan) (*shared.CurrentPlanState, error) {
+func ApplyPlan(ctx context.Context, orgId, userId, branchName string, plan *Plan) (*shared.CurrentPlanState, error) {
 	planId := plan.Id
 
 	resultsDir := getPlanResultsDir(orgId, planId)
@@ -371,7 +391,7 @@ func ApplyPlan(orgId, userId, branchName string, plan *Plan) (*shared.CurrentPla
 	}()
 
 	go func() {
-		res, err := GetPlanContexts(orgId, planId, false)
+		res, err := GetPlanContexts(orgId, planId, false, false)
 		if err != nil {
 			errCh <- fmt.Errorf("error getting contexts: %v", err)
 			return
@@ -403,9 +423,15 @@ func ApplyPlan(orgId, userId, branchName string, plan *Plan) (*shared.CurrentPla
 		}
 	}
 
+	log.Printf("Pending db results: %d", len(pendingDbResults))
+
 	pendingNewFilesSet := make(map[string]bool)
 	pendingUpdatedFilesSet := make(map[string]bool)
 	for _, result := range pendingDbResults {
+		if result.Path == "_apply.sh" {
+			continue
+		}
+
 		if len(result.Replacements) == 0 && result.Content != "" {
 			pendingNewFilesSet[result.Path] = true
 		} else if !pendingNewFilesSet[result.Path] {
@@ -485,23 +511,27 @@ func ApplyPlan(orgId, userId, branchName string, plan *Plan) (*shared.CurrentPla
 				})
 			}
 
-			res, _, err := LoadContexts(
-				LoadContextsParams{
-					OrgId:                    orgId,
-					UserId:                   userId,
-					Plan:                     plan,
-					BranchName:               branchName,
-					Req:                      &loadReq,
-					SkipConflictInvalidation: true, // no need to invalidate conflicts when applying plan--and fixes race condition since invalidation check loads description
-				},
-			)
+			if len(loadReq) > 0 {
+				res, _, err := LoadContexts(
+					ctx,
+					LoadContextsParams{
+						OrgId:                    orgId,
+						UserId:                   userId,
+						Plan:                     plan,
+						BranchName:               branchName,
+						Req:                      &loadReq,
+						SkipConflictInvalidation: true, // no need to invalidate conflicts when applying plan--and fixes race condition since invalidation check loads description
+					},
+				)
 
-			if err != nil {
-				errCh <- fmt.Errorf("error loading context: %v", err)
-				return
+				if err != nil {
+					errCh <- fmt.Errorf("error loading context: %v", err)
+					return
+				}
+
+				loadContextRes = res
 			}
 
-			loadContextRes = res
 			errCh <- nil
 		}()
 	}
@@ -516,22 +546,24 @@ func ApplyPlan(orgId, userId, branchName string, plan *Plan) (*shared.CurrentPla
 				}
 			}
 
-			res, err := UpdateContexts(
-				UpdateContextsParams{
-					OrgId:                    orgId,
-					Plan:                     plan,
-					BranchName:               branchName,
-					Req:                      &updateReq,
-					SkipConflictInvalidation: true, // no need to invalidate conflicts when applying plan--and fixes race condition since invalidation check loads description
-				},
-			)
+			if len(updateReq) > 0 {
+				res, err := UpdateContexts(
+					UpdateContextsParams{
+						OrgId:                    orgId,
+						Plan:                     plan,
+						BranchName:               branchName,
+						Req:                      &updateReq,
+						SkipConflictInvalidation: true, // no need to invalidate conflicts when applying plan--and fixes race condition since invalidation check loads description
+					},
+				)
 
-			if err != nil {
-				errCh <- fmt.Errorf("error updating context: %v", err)
-				return
+				if err != nil {
+					errCh <- fmt.Errorf("error updating context: %v", err)
+					return
+				}
+
+				updateContextRes = res
 			}
-
-			updateContextRes = res
 			errCh <- nil
 
 		}()
@@ -701,7 +733,7 @@ func RejectPlanFiles(orgId, planId string, files []string, now time.Time) error 
 	return nil
 }
 
-func RejectPlanFile(orgId, planId, file string, now time.Time) error {
+func RejectPlanFile(orgId, planId, filePathOrResultId string, now time.Time) error {
 	resultsDir := getPlanResultsDir(orgId, planId)
 	results, err := GetPlanFileResults(orgId, planId)
 
@@ -713,7 +745,7 @@ func RejectPlanFile(orgId, planId, file string, now time.Time) error {
 
 	for _, result := range results {
 		go func(result *PlanFileResult) {
-			if result.Path == file && result.AppliedAt == nil && result.RejectedAt == nil {
+			if (result.Path == filePathOrResultId || result.Id == filePathOrResultId) && result.AppliedAt == nil && result.RejectedAt == nil {
 				result.RejectedAt = &now
 			} else {
 				errCh <- nil

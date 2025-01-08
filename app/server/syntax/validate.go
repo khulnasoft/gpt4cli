@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/khulnasoft/gpt4cli/shared"
 	tree_sitter "github.com/smacker/go-tree-sitter"
 
 	"context"
@@ -15,7 +16,7 @@ const parserTimeout = 500 * time.Millisecond
 
 type ValidationRes = struct {
 	Ext       string
-	Lang      string
+	Lang      shared.TreeSitterLanguage
 	HasParser bool
 	TimedOut  bool
 	Valid     bool
@@ -25,7 +26,7 @@ type ValidationRes = struct {
 func Validate(ctx context.Context, path, file string) (*ValidationRes, error) {
 	ext := filepath.Ext(path)
 
-	parser, lang, fallbackParser, fallbackLang := getParserForExt(ext)
+	parser, lang, fallbackParser, fallbackLang := GetParserForExt(ext)
 
 	if parser == nil {
 		return &ValidationRes{Ext: ext, Lang: lang, HasParser: false}, nil

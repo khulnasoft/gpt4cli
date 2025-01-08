@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,13 +15,13 @@ import (
 
 const tokenExpirationDays = 90 // (trial tokens don't expire)
 
-func CreateAuthToken(userId string, isTrial bool, tx *sqlx.Tx) (token, id string, err error) {
+func CreateAuthToken(userId string, tx *sqlx.Tx) (token, id string, err error) {
 	uid := uuid.New()
 	bytes := uid[:]
 	hashBytes := sha256.Sum256(bytes)
 	hash := hex.EncodeToString(hashBytes[:])
 
-	err = tx.QueryRow("INSERT INTO auth_tokens (user_id, token_hash, is_trial) VALUES ($1, $2, $3) RETURNING id", userId, hash, isTrial).Scan(&id)
+	err = tx.QueryRow("INSERT INTO auth_tokens (user_id, token_hash) VALUES ($1, $2) RETURNING id", userId, hash).Scan(&id)
 
 	if err != nil {
 		return "", "", fmt.Errorf("error creating auth token: %v", err)
@@ -33,6 +34,7 @@ func ValidateAuthToken(token string) (*AuthToken, error) {
 	uid, err := uuid.Parse(token)
 
 	if err != nil {
+		log.Println("error parsing token", err)
 		return nil, errors.New("invalid token")
 	}
 
@@ -41,11 +43,11 @@ func ValidateAuthToken(token string) (*AuthToken, error) {
 	tokenHash := hex.EncodeToString(hashBytes[:])
 
 	var authToken AuthToken
-	// trial tokens don't expire
-	err = Conn.Get(&authToken, "SELECT * FROM auth_tokens WHERE token_hash = $1 AND (created_at > $2 OR is_trial = TRUE) AND deleted_at IS NULL", tokenHash, time.Now().AddDate(0, 0, -tokenExpirationDays))
+	err = Conn.Get(&authToken, "SELECT * FROM auth_tokens WHERE token_hash = $1 AND created_at > $2 AND deleted_at IS NULL", tokenHash, time.Now().AddDate(0, 0, -tokenExpirationDays))
 
 	if err != nil {
 		if err == sql.ErrNoRows {
+			log.Println("auth token error - no rows found")
 			return nil, errors.New("invalid token")
 		}
 
@@ -70,10 +72,20 @@ func CreateEmailVerification(email string, userId, pinHash string) error {
 	return nil
 }
 
-// email verifications expire in 5 minutes
-const emailVerificationExpirationMinutes = 5
+// email verifications expire in 10 minutes
+const emailVerificationExpirationMinutes = 10
+
+const InvalidOrExpiredPinError = "invalid or expired pin"
 
 func ValidateEmailVerification(email, pin string) (id string, err error) {
+	return validateEmailVerification(email, pin, true, true)
+}
+
+func ValidateEmailPreviouslyVerified(email, pin string) (id string, err error) {
+	return validateEmailVerification(email, pin, false, false)
+}
+
+func validateEmailVerification(email, pin string, enforceExpiration bool, errOnAlreadyVerified bool) (id string, err error) {
 	pinHashBytes := sha256.Sum256([]byte(pin))
 	pinHash := hex.EncodeToString(pinHashBytes[:])
 
@@ -82,22 +94,67 @@ func ValidateEmailVerification(email, pin string) (id string, err error) {
 	query := `SELECT id, auth_token_id 
               FROM email_verifications
               WHERE pin_hash = $1 
-							AND email = $2
-              AND created_at > $3`
+							AND email = $2`
 
-	err = Conn.QueryRow(query, pinHash, email, time.Now().Add(-emailVerificationExpirationMinutes*time.Minute)).Scan(&id, &authTokenId)
+	if enforceExpiration {
+		query += ` AND created_at > $3`
+		err = Conn.QueryRow(query, pinHash, email, time.Now().Add(-emailVerificationExpirationMinutes*time.Minute)).Scan(&id, &authTokenId)
+	} else {
+		err = Conn.QueryRow(query, pinHash, email).Scan(&id, &authTokenId)
+	}
+
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", errors.New("invalid or expired pin")
+			return "", errors.New(InvalidOrExpiredPinError)
 		}
 		return "", fmt.Errorf("error validating email verification: %v", err)
 	}
 
-	if authTokenId != nil {
+	if authTokenId != nil && errOnAlreadyVerified {
 		return "", errors.New("pin already verified")
+	} else if authTokenId == nil && !errOnAlreadyVerified {
+		return "", errors.New("pin not previously verified")
 	}
 
 	return id, nil
+}
+
+func CreateSignInCode(userId, orgId, pinHash string) error {
+	_, err := Conn.Exec("INSERT INTO sign_in_codes (user_id, org_id, pin_hash) VALUES ($1, $2, $3)", userId, orgId, pinHash)
+
+	if err != nil {
+		return fmt.Errorf("error creating sign in code: %v", err)
+	}
+
+	return nil
+}
+
+const signInCodeExpirationMinutes = 5
+
+type ValidateSignInCodeRes struct {
+	Id     string
+	OrgId  string
+	UserId string
+}
+
+func ValidateSignInCode(pin string) (*ValidateSignInCodeRes, error) {
+	pinHashBytes := sha256.Sum256([]byte(pin))
+	pinHash := hex.EncodeToString(pinHashBytes[:])
+
+	res := &ValidateSignInCodeRes{}
+	var authTokenId *string
+	query := `SELECT id, org_id, user_id, auth_token_id FROM sign_in_codes WHERE pin_hash = $1 AND created_at > $2`
+	err := Conn.QueryRow(query, pinHash, time.Now().Add(-signInCodeExpirationMinutes*time.Minute)).Scan(&res.Id, &res.OrgId, &res.UserId, &authTokenId)
+
+	if err != nil {
+		return nil, fmt.Errorf("error validating sign in code: %v", err)
+	}
+
+	if authTokenId != nil {
+		return nil, errors.New("sign in code already used")
+	}
+
+	return res, nil
 }
 
 func GetUserPermissions(userId, orgId string) ([]string, error) {

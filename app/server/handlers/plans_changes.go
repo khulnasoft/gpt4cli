@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"gpt4cli-server/db"
-	modelPlan "gpt4cli-server/model/plan"
 	"io"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
+	modelPlan "gpt4cli-server/model/plan"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -18,7 +18,7 @@ import (
 func CurrentPlanHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for CurrentPlanHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -32,10 +32,13 @@ func CurrentPlanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Just in case this was sent immediately after a stream finished, wait a little before locking to allow for cleanup
+	time.Sleep(100 * time.Millisecond)
+
 	var err error
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -71,7 +74,7 @@ func CurrentPlanHandler(w http.ResponseWriter, r *http.Request) {
 func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for ApplyPlanHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -104,8 +107,11 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	// Just in case this was sent immediately after a stream finished, wait a little before locking to allow for cleanup
+	time.Sleep(100 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(r.Context())
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -121,7 +127,7 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentPlan, err := db.ApplyPlan(auth.OrgId, auth.User.Id, branch, plan)
+	currentPlan, err := db.ApplyPlan(ctx, auth.OrgId, auth.User.Id, branch, plan)
 
 	if err != nil {
 		log.Printf("Error applying plan: %v\n", err)
@@ -132,6 +138,7 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 	clients := initClients(
 		initClientsParams{
 			w:           w,
+			auth:        auth,
 			apiKeys:     requestBody.ApiKeys,
 			openAIBase:  requestBody.OpenAIBase,
 			openAIOrgId: requestBody.OpenAIOrgId,
@@ -142,7 +149,7 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 	envVar := settings.ModelPack.CommitMsg.BaseModelConfig.ApiKeyEnvVar
 	client := clients[envVar]
 
-	s, err := modelPlan.GenCommitMsgForPendingResults(client, settings.ModelPack.CommitMsg, currentPlan, r.Context())
+	s, err := modelPlan.GenCommitMsgForPendingResults(auth, plan, client, settings, currentPlan, r.Context())
 
 	if err != nil {
 		log.Printf("Error generating commit message: %v\n", err)
@@ -158,7 +165,7 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 func RejectAllChangesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for RejectAllChangesHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -174,7 +181,7 @@ func RejectAllChangesHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -205,7 +212,7 @@ func RejectAllChangesHandler(w http.ResponseWriter, r *http.Request) {
 func RejectFileHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for RejectFileHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -229,7 +236,7 @@ func RejectFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -260,7 +267,7 @@ func RejectFileHandler(w http.ResponseWriter, r *http.Request) {
 func RejectFilesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for RejectFilesHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -284,7 +291,7 @@ func RejectFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -322,7 +329,7 @@ func RejectFilesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArchivePlanHandler(w http.ResponseWriter, r *http.Request) {
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -370,7 +377,7 @@ func ArchivePlanHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func UnarchivePlanHandler(w http.ResponseWriter, r *http.Request) {
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -420,7 +427,7 @@ func UnarchivePlanHandler(w http.ResponseWriter, r *http.Request) {
 func GetPlanDiffsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for GetPlanDiffs")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -438,7 +445,7 @@ func GetPlanDiffsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {

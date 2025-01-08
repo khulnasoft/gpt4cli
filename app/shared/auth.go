@@ -15,6 +15,11 @@ const (
 
 	ApiErrorTypeContinueNoMessages ApiErrorType = "continue_no_messages"
 
+	ApiErrorTypeCloudInsufficientCredits ApiErrorType = "cloud_insufficient_credits"
+	ApiErrorTypeCloudMonthlyMaxReached   ApiErrorType = "cloud_monthly_max_reached"
+	ApiErrorTypeCloudSubscriptionPaused  ApiErrorType = "cloud_subscription_paused"
+	ApiErrorTypeCloudSubscriptionOverdue ApiErrorType = "cloud_subscription_overdue"
+
 	ApiErrorTypeOther ApiErrorType = "other"
 )
 
@@ -24,6 +29,11 @@ type TrialPlansExceededError struct {
 
 type TrialMessagesExceededError struct {
 	MaxReplies int `json:"maxMessages"`
+}
+
+type BillingError struct {
+	HasBillingPermission bool `json:"hasBillingPermission"`
+	IsTrial              bool `json:"isTrial"`
 }
 
 type ApiError struct {
@@ -36,4 +46,26 @@ type ApiError struct {
 
 	// only used for trial messages exceeded error
 	TrialMessagesExceededError *TrialMessagesExceededError `json:"trialMessagesExceededError,omitempty"`
+
+	// only used for billing errors
+	BillingError *BillingError `json:"billingError,omitempty"`
+}
+
+type ClientAccount struct {
+	IsCloud  bool   `json:"isCloud"`
+	Host     string `json:"host"`
+	Email    string `json:"email"`
+	UserName string `json:"userName"`
+	UserId   string `json:"userId"`
+	Token    string `json:"token"`
+
+	IsTrial bool `json:"isTrial"` // legacy field
+}
+
+type ClientAuth struct {
+	ClientAccount
+	OrgId                string `json:"orgId"`
+	OrgName              string `json:"orgName"`
+	OrgIsTrial           bool   `json:"orgIsTrial"`
+	IntegratedModelsMode bool   `json:"integratedModelsMode"`
 }

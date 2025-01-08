@@ -2,11 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"gpt4cli-server/db"
-	"gpt4cli-server/email"
-	"gpt4cli-server/types"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
+	"gpt4cli-server/email"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -15,16 +14,24 @@ import (
 
 func InviteUserHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for InviteUserHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't invite other users",
+			Msg:    "Trial user can't invite other users",
 		})
 
 		return
@@ -33,7 +40,7 @@ func InviteUserHandler(w http.ResponseWriter, r *http.Request) {
 	currentUserId := auth.User.Id
 
 	var req shared.InviteRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
+	err = json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		log.Printf("Error unmarshalling request: %v\n", err)
 		http.Error(w, "Error unmarshalling request: "+err.Error(), http.StatusInternalServerError)
@@ -42,7 +49,7 @@ func InviteUserHandler(w http.ResponseWriter, r *http.Request) {
 	req.Email = strings.ToLower(req.Email)
 
 	// ensure current user can invite target user
-	permission := types.Permission(strings.Join([]string{string(types.PermissionInviteUser), req.OrgRoleId}, "|"))
+	permission := shared.Permission(strings.Join([]string{string(shared.PermissionInviteUser), req.OrgRoleId}, "|"))
 
 	if !auth.HasPermission(permission) {
 		log.Printf("User does not have permission to invite user with role: %v\n", req.OrgRoleId)
@@ -58,13 +65,6 @@ func InviteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := &split[1]
-	org, err := db.GetOrg(auth.OrgId)
-
-	if err != nil {
-		log.Printf("Error getting org: %v\n", err)
-		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
 
 	if org.AutoAddDomainUsers && org.Domain == domain {
 		log.Printf("User already has access to org via domain: %v\n", domain)
@@ -165,16 +165,23 @@ func InviteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func ListPendingInvitesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for ListInvitesHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't list invites",
+			Msg:    "Trial user can't list invites",
 		})
 		return
 	}
@@ -206,16 +213,23 @@ func ListPendingInvitesHandler(w http.ResponseWriter, r *http.Request) {
 
 func ListAcceptedInvitesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for ListAcceptedInvitesHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't list invites",
+			Msg:    "Trial user can't list invites",
 		})
 		return
 	}
@@ -247,16 +261,23 @@ func ListAcceptedInvitesHandler(w http.ResponseWriter, r *http.Request) {
 
 func ListAllInvitesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for ListAllInvitesHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't list invites",
+			Msg:    "Trial user can't list invites",
 		})
 		return
 	}
@@ -288,16 +309,23 @@ func ListAllInvitesHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteInviteHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for DeleteInviteHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't delete invites",
+			Msg:    "Trial user can't delete invites",
 		})
 		return
 	}
@@ -320,9 +348,9 @@ func DeleteInviteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ensure current user can remove target invite
-	removePermission := types.Permission(strings.Join([]string{string(types.PermissionRemoveUser), invite.OrgRoleId}, "|"))
+	removePermission := shared.Permission(strings.Join([]string{string(shared.PermissionRemoveUser), invite.OrgRoleId}, "|"))
 
-	invitePermission := types.Permission(strings.Join([]string{string(types.PermissionInviteUser), invite.OrgRoleId}, "|"))
+	invitePermission := shared.Permission(strings.Join([]string{string(shared.PermissionInviteUser), invite.OrgRoleId}, "|"))
 
 	if !(auth.HasPermission(removePermission) ||
 		(auth.User.Id == invite.InviterId && auth.HasPermission(invitePermission))) {

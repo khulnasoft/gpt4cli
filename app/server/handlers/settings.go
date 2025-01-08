@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"gpt4cli-server/db"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 	"reflect"
 
 	"github.com/gorilla/mux"
@@ -16,7 +16,7 @@ import (
 func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for GetSettingsHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -34,7 +34,7 @@ func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -67,7 +67,7 @@ func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for UpdateSettingsHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -94,7 +94,7 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -155,7 +155,7 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 func GetDefaultSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for GetDefaultSettingsHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -184,7 +184,7 @@ func GetDefaultSettingsHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateDefaultSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for UpdateDefaultSettingsHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 
 	if auth == nil {
 		return

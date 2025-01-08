@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"gpt4cli/term"
-	"gpt4cli/types"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"gpt4cli/term"
+	"gpt4cli/types"
 	"strings"
 	"sync"
 
@@ -64,14 +64,14 @@ func init() {
 		term.OutputErrorAndExit(err.Error())
 	}
 
-	Gpt4cliDir = findGpt4cli(Cwd)
+	FindGpt4cliDir()
 	if Gpt4cliDir != "" {
 		ProjectRoot = Cwd
 	}
 }
 
 func FindOrCreateGpt4cli() (string, bool, error) {
-	Gpt4cliDir = findGpt4cli(Cwd)
+	FindGpt4cliDir()
 	if Gpt4cliDir != "" {
 		ProjectRoot = Cwd
 		return Gpt4cliDir, false, nil
@@ -122,14 +122,7 @@ func IsGitRepo(dir string) bool {
 	return isGitRepo
 }
 
-type ProjectPaths struct {
-	ActivePaths    map[string]bool
-	AllPaths       map[string]bool
-	Gpt4cliIgnored *ignore.GitIgnore
-	IgnoredPaths   map[string]string
-}
-
-func GetProjectPaths(baseDir string) (*ProjectPaths, error) {
+func GetProjectPaths(baseDir string) (*types.ProjectPaths, error) {
 	if ProjectRoot == "" {
 		return nil, fmt.Errorf("no project root found")
 	}
@@ -137,7 +130,7 @@ func GetProjectPaths(baseDir string) (*ProjectPaths, error) {
 	return GetPaths(baseDir, ProjectRoot)
 }
 
-func GetPaths(baseDir, currentDir string) (*ProjectPaths, error) {
+func GetPaths(baseDir, currentDir string) (*types.ProjectPaths, error) {
 	ignored, err := GetGpt4cliIgnore(currentDir)
 
 	if err != nil {
@@ -376,7 +369,7 @@ func GetPaths(baseDir, currentDir string) (*ProjectPaths, error) {
 		}
 	}
 
-	return &ProjectPaths{
+	return &types.ProjectPaths{
 		ActivePaths:    activePaths,
 		AllPaths:       allPaths,
 		Gpt4cliIgnored: ignored,
@@ -402,24 +395,30 @@ func GetGpt4cliIgnore(dir string) (*ignore.GitIgnore, error) {
 	return nil, nil
 }
 
-func GetParentProjectIdsWithPaths() ([][2]string, error) {
+func GetParentProjectIdsWithPaths(currentUserId string) ([][2]string, error) {
 	var parentProjectIds [][2]string
 	currentDir := filepath.Dir(Cwd)
 
 	for currentDir != "/" {
 		gpt4cliDir := findGpt4cli(currentDir)
-		projectSettingsPath := filepath.Join(gpt4cliDir, "project.json")
+		projectSettingsPath := filepath.Join(gpt4cliDir, "projects-v2.json")
 		if _, err := os.Stat(projectSettingsPath); err == nil {
 			bytes, err := os.ReadFile(projectSettingsPath)
 			if err != nil {
 				return nil, fmt.Errorf("error reading projectId file: %s", err)
 			}
 
-			var settings types.CurrentProjectSettings
-			err = json.Unmarshal(bytes, &settings)
+			var settingsByAccount types.CurrentProjectSettingsByAccount
+			err = json.Unmarshal(bytes, &settingsByAccount)
 
 			if err != nil {
-				term.OutputErrorAndExit("error unmarshalling project.json: %v", err)
+				term.OutputErrorAndExit("error unmarshalling projects-v2.json: %v", err)
+			}
+
+			settings := settingsByAccount[currentUserId]
+
+			if settings == nil {
+				return parentProjectIds, nil
 			}
 
 			projectId := string(settings.Id)
@@ -431,7 +430,7 @@ func GetParentProjectIdsWithPaths() ([][2]string, error) {
 	return parentProjectIds, nil
 }
 
-func GetChildProjectIdsWithPaths(ctx context.Context) ([][2]string, error) {
+func GetChildProjectIdsWithPaths(ctx context.Context, currentUserId string) ([][2]string, error) {
 	var childProjectIds [][2]string
 
 	err := filepath.Walk(Cwd, func(path string, info os.FileInfo, err error) error {
@@ -463,17 +462,23 @@ func GetChildProjectIdsWithPaths(ctx context.Context) ([][2]string, error) {
 
 		if info.IsDir() && path != Cwd {
 			gpt4cliDir := findGpt4cli(path)
-			projectSettingsPath := filepath.Join(gpt4cliDir, "project.json")
+			projectSettingsPath := filepath.Join(gpt4cliDir, "projects-v2.json")
 			if _, err := os.Stat(projectSettingsPath); err == nil {
 				bytes, err := os.ReadFile(projectSettingsPath)
 				if err != nil {
 					return fmt.Errorf("error reading projectId file: %s", err)
 				}
-				var settings types.CurrentProjectSettings
-				err = json.Unmarshal(bytes, &settings)
+				var settingsByAccount types.CurrentProjectSettingsByAccount
+				err = json.Unmarshal(bytes, &settingsByAccount)
 
 				if err != nil {
-					term.OutputErrorAndExit("error unmarshalling project.json: %v", err)
+					term.OutputErrorAndExit("error unmarshalling projects-v2.json: %v", err)
+				}
+
+				settings := settingsByAccount[currentUserId]
+
+				if settings == nil {
+					return nil
 				}
 
 				projectId := string(settings.Id)
@@ -532,6 +537,10 @@ func GetBaseDirForFilePaths(paths []string) string {
 	}
 
 	return baseDir
+}
+
+func FindGpt4cliDir() {
+	Gpt4cliDir = findGpt4cli(Cwd)
 }
 
 func findGpt4cli(baseDir string) string {

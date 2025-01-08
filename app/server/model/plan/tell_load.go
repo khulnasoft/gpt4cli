@@ -2,11 +2,11 @@ package plan
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"gpt4cli-server/db"
 	"gpt4cli-server/model"
 	"gpt4cli-server/types"
-	"log"
-	"net/http"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
@@ -60,10 +60,12 @@ func (state *activeTellStreamState) loadTellPlan() error {
 	var modelContext []*db.Context
 	var convo []*db.ConvoMessage
 	var summaries []*db.ConvoSummary
+	var subtasks []*db.Subtask
 	var settings *shared.PlanSettings
 	var latestSummaryTokens int
+	var currentPlan *shared.CurrentPlanState
 
-	// get name for plan and rename it's a draft
+	// get name for plan and rename if it's a draft
 	go func() {
 		res, err := db.GetPlanSettings(plan, true)
 		if err != nil {
@@ -77,7 +79,14 @@ func (state *activeTellStreamState) loadTellPlan() error {
 			envVar := settings.ModelPack.Namer.BaseModelConfig.ApiKeyEnvVar
 			client := clients[envVar]
 
-			name, err := model.GenPlanName(client, settings.ModelPack.Namer, req.Prompt)
+			name, err := model.GenPlanName(
+				auth,
+				plan,
+				settings,
+				client,
+				req.Prompt,
+				active.Ctx,
+			)
 
 			if err != nil {
 				log.Printf("Error generating plan name: %v\n", err)
@@ -133,7 +142,7 @@ func (state *activeTellStreamState) loadTellPlan() error {
 		if iteration > 0 || missingFileResponse != "" {
 			modelContext = active.Contexts
 		} else {
-			res, err := db.GetPlanContexts(currentOrgId, planId, true)
+			res, err := db.GetPlanContexts(currentOrgId, planId, true, false)
 			if err != nil {
 				log.Printf("Error getting plan modelContext: %v\n", err)
 				errCh <- fmt.Errorf("error getting plan modelContext: %v", err)
@@ -141,6 +150,7 @@ func (state *activeTellStreamState) loadTellPlan() error {
 			}
 			modelContext = res
 		}
+
 		errCh <- nil
 	}()
 
@@ -246,6 +256,17 @@ func (state *activeTellStreamState) loadTellPlan() error {
 		errCh <- nil
 	}()
 
+	go func() {
+		res, err := db.GetPlanSubtasks(auth.OrgId, planId)
+		if err != nil {
+			log.Printf("Error getting plan subtasks: %v\n", err)
+			errCh <- fmt.Errorf("error getting plan subtasks: %v", err)
+			return
+		}
+		subtasks = res
+		errCh <- nil
+	}()
+
 	err = func() error {
 		var err error
 		defer func() {
@@ -269,7 +290,7 @@ func (state *activeTellStreamState) loadTellPlan() error {
 			}
 		}()
 
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 4; i++ {
 			err = <-errCh
 			if err != nil {
 				active.StreamDoneCh <- &shared.ApiError{
@@ -280,6 +301,21 @@ func (state *activeTellStreamState) loadTellPlan() error {
 				return err
 			}
 		}
+
+		res, err := db.GetCurrentPlanState(db.CurrentPlanStateParams{
+			OrgId:    currentOrgId,
+			PlanId:   planId,
+			Contexts: modelContext,
+		})
+		if err != nil {
+			active.StreamDoneCh <- &shared.ApiError{
+				Type:   shared.ApiErrorTypeOther,
+				Status: http.StatusInternalServerError,
+				Msg:    fmt.Sprintf("Error getting current plan state: %v", err),
+			}
+			return err
+		}
+		currentPlan = res
 
 		return nil
 	}()
@@ -293,6 +329,15 @@ func (state *activeTellStreamState) loadTellPlan() error {
 	state.summaries = summaries
 	state.latestSummaryTokens = latestSummaryTokens
 	state.settings = settings
+	state.currentPlanState = currentPlan
+	state.subtasks = subtasks
+
+	for _, subtask := range state.subtasks {
+		if !subtask.IsFinished {
+			state.currentSubtask = subtask
+			break
+		}
+	}
 
 	return nil
 }

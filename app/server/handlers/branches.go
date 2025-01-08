@@ -3,10 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"gpt4cli-server/db"
 	"io"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
 	"github.com/khulnasoft/gpt4cli/shared"
@@ -15,7 +15,7 @@ import (
 func ListBranchesHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for ListBranchesHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -32,7 +32,7 @@ func ListBranchesHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, false)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, false)
 	if unlockFn == nil {
 		return
 	} else {
@@ -65,7 +65,7 @@ func ListBranchesHandler(w http.ResponseWriter, r *http.Request) {
 func CreateBranchHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for CreateBranchHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -108,7 +108,7 @@ func CreateBranchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -156,7 +156,7 @@ func CreateBranchHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteBranchHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for DeleteBranchHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}

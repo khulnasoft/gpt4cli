@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/term"
+	"gpt4cli/types"
 
 	"github.com/fatih/color"
 	"github.com/khulnasoft/gpt4cli/shared"
@@ -15,6 +15,7 @@ import (
 )
 
 var name string
+var contextBaseDir string
 
 // newCmd represents the new command
 var newCmd = &cobra.Command{
@@ -29,6 +30,7 @@ var newCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(newCmd)
 	newCmd.Flags().StringVarP(&name, "name", "n", "", "Name of the new plan")
+	newCmd.Flags().StringVar(&contextBaseDir, "context-dir", ".", "Base directory to auto-load context from")
 }
 
 func new(cmd *cobra.Command, args []string) {
@@ -36,33 +38,40 @@ func new(cmd *cobra.Command, args []string) {
 	lib.MustResolveOrCreateProject()
 
 	term.StartSpinner("")
-	res, apiErr := api.Client.CreatePlan(lib.CurrentProjectId, shared.CreatePlanRequest{Name: name})
-	term.StopSpinner()
 
-	if apiErr != nil {
-		if apiErr.Type == shared.ApiErrorTypeTrialPlansExceeded {
-			fmt.Fprintf(os.Stderr, "🚨 You've reached the Gpt4cli Cloud anonymous trial limit of %d plans\n", apiErr.TrialPlansExceededError.MaxPlans)
+	errCh := make(chan error, 2)
 
-			res, err := term.ConfirmYesNo("Upgrade to an unlimited free account?")
+	var planId string
+	var config *shared.PlanConfig
 
-			if err != nil {
-				term.OutputErrorAndExit("Error prompting upgrade trial: %v", err)
-			}
-
-			if res {
-				err := auth.ConvertTrial()
-				if err != nil {
-					term.OutputErrorAndExit("Error converting trial: %v", err)
-				}
-			}
-
+	go func() {
+		res, apiErr := api.Client.CreatePlan(lib.CurrentProjectId, shared.CreatePlanRequest{Name: name})
+		if apiErr != nil {
+			errCh <- fmt.Errorf("error creating plan: %v", apiErr.Msg)
 			return
 		}
+		planId = res.Id
+		errCh <- nil
+	}()
 
-		term.OutputErrorAndExit("Error creating plan: %v", apiErr.Msg)
+	go func() {
+		var apiErr *shared.ApiError
+		config, apiErr = api.Client.GetDefaultPlanConfig()
+		if apiErr != nil {
+			errCh <- fmt.Errorf("error getting plan config: %v", apiErr.Msg)
+			return
+		}
+		errCh <- nil
+	}()
+
+	for i := 0; i < 2; i++ {
+		err := <-errCh
+		if err != nil {
+			term.OutputErrorAndExit("Error: %v", err)
+		}
 	}
 
-	err := lib.WriteCurrentPlan(res.Id)
+	err := lib.WriteCurrentPlan(planId)
 
 	if err != nil {
 		term.OutputErrorAndExit("Error setting current plan: %v", err)
@@ -72,9 +81,36 @@ func new(cmd *cobra.Command, args []string) {
 		name = "draft"
 	}
 
-	fmt.Printf("✅ Started new plan %s and set it to current plan\n", color.New(color.Bold, term.ColorHiGreen).Sprint(name))
+	term.StopSpinner()
 
-	fmt.Println()
-	term.PrintCmds("", "load", "tell", "plans", "current")
+	fmt.Printf("✅ Started new plan %s and set it to current plan\n", color.New(color.Bold, term.ColorHiGreen).Sprint(name))
+	fmt.Println("⚙️  Using default config")
+
+	// autoModeLabel := shared.ConfigSettingsByKey["automode"].KeyToLabel(string(config.AutoMode))
+	// fmt.Println("⚡️ Auto-mode:", autoModeLabel)
+
+	if config.AutoLoadContext {
+		fmt.Println("📥 Automatic context loading is enabled")
+
+		baseDir := contextBaseDir
+		if baseDir == "" {
+			baseDir = "."
+		}
+
+		lib.MustLoadContext([]string{baseDir}, &types.LoadContextParams{
+			DefsOnly:          true,
+			SkipIgnoreWarning: true,
+		})
+	} else {
+		fmt.Println()
+	}
+
+	cmds := []string{"tell", "chat", "plans", "current", "config"}
+
+	if !config.AutoLoadContext {
+		cmds = append([]string{"load"}, cmds...)
+	}
+
+	term.PrintCmds("", cmds...)
 
 }

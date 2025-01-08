@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
+	"time"
 
 	"gpt4cli-server/db"
+	"gpt4cli-server/hooks"
 	"gpt4cli-server/model"
-	"gpt4cli-server/model/lib"
 	"gpt4cli-server/model/prompts"
 	"gpt4cli-server/types"
 
@@ -20,7 +20,15 @@ import (
 func Tell(clients map[string]*openai.Client, plan *db.Plan, branch string, auth *types.ServerAuth, req *shared.TellPlanRequest) error {
 	log.Printf("Tell: Called with plan ID %s on branch %s\n", plan.Id, branch)
 
-	_, err := activatePlan(clients, plan, branch, auth, req.Prompt, false)
+	_, err := activatePlan(
+		clients,
+		plan,
+		branch,
+		auth,
+		req.Prompt,
+		false,
+		req.AutoContext,
+	)
 
 	if err != nil {
 		log.Printf("Error activating plan: %v\n", err)
@@ -35,8 +43,7 @@ func Tell(clients map[string]*openai.Client, plan *db.Plan, branch string, auth 
 		req,
 		0,
 		"",
-		req.BuildMode == shared.BuildModeAuto,
-		"",
+		!req.IsChatOnly && req.BuildMode == shared.BuildModeAuto,
 		0,
 	)
 
@@ -53,7 +60,6 @@ func execTellPlan(
 	iteration int,
 	missingFileResponse shared.RespondMissingFileChoice,
 	shouldBuildPending bool,
-	autoContinueNextTask string,
 	numErrorRetry int,
 ) {
 	log.Printf("execTellPlan: Called for plan ID %s on branch %s, iteration %d\n", plan.Id, branch, iteration)
@@ -67,25 +73,22 @@ func execTellPlan(
 		return
 	}
 
-	if os.Getenv("IS_CLOUD") != "" &&
-		missingFileResponse == "" {
-		log.Println("execTellPlan: IS_CLOUD environment variable is set")
-		if auth.User.IsTrial {
-			if plan.TotalReplies >= types.TrialMaxReplies {
-				active.StreamDoneCh <- &shared.ApiError{
-					Type:   shared.ApiErrorTypeTrialMessagesExceeded,
-					Status: http.StatusForbidden,
-					Msg:    "Anonymous trial message limit exceeded",
-					TrialMessagesExceededError: &shared.TrialMessagesExceededError{
-						MaxReplies: types.TrialMaxReplies,
-					},
-				}
-				return
-			}
+	if missingFileResponse == "" {
+		log.Println("Executing WillExecPlanHook")
+		_, apiErr := hooks.ExecHook(hooks.WillExecPlan, hooks.HookParams{
+			Auth: auth,
+			Plan: plan,
+		})
+
+		if apiErr != nil {
+			time.Sleep(100 * time.Millisecond)
+			active.StreamDoneCh <- apiErr
+			return
 		}
 	}
 
 	planId := plan.Id
+	log.Println("execTellPlan - Setting plan status to replying")
 	err := db.SetPlanStatus(planId, branch, shared.PlanStatusReplying, "")
 	if err != nil {
 		log.Printf("Error setting plan %s status to replying: %v\n", planId, err)
@@ -98,6 +101,7 @@ func execTellPlan(
 		log.Printf("execTellPlan: execTellPlan operation completed for plan ID %s on branch %s, iteration %d\n", plan.Id, branch, iteration)
 		return
 	}
+	log.Println("execTellPlan - Plan status set to replying")
 
 	state := &activeTellStreamState{
 		clients:                clients,
@@ -112,10 +116,12 @@ func execTellPlan(
 		currentReplyNumRetries: numErrorRetry,
 	}
 
+	log.Println("execTellPlan - Loading tell plan")
 	err = state.loadTellPlan()
 	if err != nil {
 		return
 	}
+	log.Println("execTellPlan - Tell plan loaded")
 
 	if iteration == 0 && missingFileResponse == "" {
 		UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
@@ -152,7 +158,23 @@ func execTellPlan(
 		}
 	}
 
-	modelContextText, modelContextTokens, err := lib.FormatModelContext(state.modelContext)
+	isPlanningStage := req.IsChatOnly || (!req.IsUserContinue && (iteration == 0 || (req.AutoContext && iteration == 1)))
+	isImplementationStage := !isPlanningStage
+	isContextStage := isPlanningStage && req.AutoContext && iteration == 0
+
+	log.Printf("isPlanningStage: %t, isImplementationStage: %t, isContextStage: %t\n", isPlanningStage, isImplementationStage, isContextStage)
+
+	// if auto context is enabled, we only include maps and trees on the first iteration, which is the context-gathering step, and the second iteration, which is the planning step
+	var (
+		includeMaps  = true
+		includeTrees = true
+	)
+	if req.AutoContext && iteration > 1 {
+		includeMaps = false
+		includeTrees = false
+	}
+
+	modelContextText, modelContextTokens, err := state.formatModelContext(includeMaps, includeTrees, isImplementationStage, req.ExecEnabled)
 	if err != nil {
 		err = fmt.Errorf("error formatting model modelContext: %v", err)
 		log.Println(err)
@@ -165,21 +187,100 @@ func execTellPlan(
 		return
 	}
 
-	systemMessageText := prompts.SysCreate + modelContextText
-	systemMessage := openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleSystem,
-		Content: systemMessageText,
+	var sysCreate string
+
+	var sysCreateTokens int
+
+	if isPlanningStage {
+		log.Println("isPlanningStage")
+		if req.AutoContext {
+			if iteration == 0 {
+				sysCreate = prompts.AutoContextPreamble
+				sysCreateTokens = prompts.AutoContextPreambleNumTokens
+			} else {
+				sysCreate = prompts.SysPlanningAutoContext
+				sysCreateTokens = prompts.SysPlanningAutoContextTokens
+			}
+		} else {
+			sysCreate = prompts.SysPlanningBasic
+			sysCreateTokens = prompts.SysPlanningBasicTokens
+		}
+	} else {
+		log.Println("isImplementationStage")
+		if state.currentSubtask == nil {
+			err = fmt.Errorf("no current subtask")
+			log.Println(err)
+			active.StreamDoneCh <- &shared.ApiError{
+				Type:   shared.ApiErrorTypeOther,
+				Status: http.StatusInternalServerError,
+				Msg:    "No current subtask",
+			}
+			return
+		}
+		sysCreate = prompts.GetImplementationPrompt(state.currentSubtask.Title)
 	}
 
-	if len(active.SkippedPaths) > 0 {
-		systemMessageText += prompts.SkippedPathsPrompt
-		for skippedPath := range active.SkippedPaths {
-			systemMessageText += fmt.Sprintf("- %s\n", skippedPath)
+	if !isContextStage {
+		if req.ExecEnabled {
+			sysCreate += prompts.ApplyScriptPrompt
+			sysCreateTokens += prompts.ApplyScriptPromptNumTokens
+		} else {
+			sysCreate += prompts.NoApplyScriptPrompt
+			sysCreateTokens += prompts.NoApplyScriptPromptNumTokens
 		}
 	}
 
+	// log.Println("sysCreate before context:\n", sysCreate)
+
+	sysCreate += modelContextText
+
+	if len(active.SkippedPaths) > 0 {
+		skippedPrompt := prompts.SkippedPathsPrompt
+		for skippedPath := range active.SkippedPaths {
+			skippedPrompt += fmt.Sprintf("- %s\n", skippedPath)
+		}
+
+		numTokens, err := shared.GetNumTokens(skippedPrompt)
+		if err != nil {
+			log.Printf("Error getting num tokens for skipped paths: %v\n", err)
+			active.StreamDoneCh <- &shared.ApiError{
+				Type:   shared.ApiErrorTypeOther,
+				Status: http.StatusInternalServerError,
+				Msg:    "Error getting num tokens for skipped paths",
+			}
+			return
+		}
+
+		sysCreateTokens += numTokens
+	}
+
+	if len(state.subtasks) > 0 {
+		subtasksPrompt, subtaskTokens, err := state.formatSubtasks()
+
+		if err != nil {
+			err = fmt.Errorf("error formatting subtasks: %v", err)
+			log.Println(err)
+			active.StreamDoneCh <- &shared.ApiError{
+				Type:   shared.ApiErrorTypeOther,
+				Status: http.StatusInternalServerError,
+				Msg:    "Error formatting subtasks",
+			}
+			return
+		}
+
+		log.Println("subtasksPrompt:\n", subtasksPrompt)
+
+		sysCreate += subtasksPrompt
+		sysCreateTokens += subtaskTokens
+	}
+
+	log.Println("**sysCreate:**\n", sysCreate)
+
 	state.messages = []openai.ChatCompletionMessage{
-		systemMessage,
+		{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: sysCreate,
+		},
 	}
 
 	// Add a separate message for image contexts
@@ -216,10 +317,28 @@ func execTellPlan(
 		}
 	}
 
+	osDetailsTokens, err := shared.GetNumTokens(req.OsDetails)
+	if err != nil {
+		log.Printf("Error getting num tokens for os details: %v\n", err)
+		active.StreamDoneCh <- &shared.ApiError{
+			Type:   shared.ApiErrorTypeOther,
+			Status: http.StatusInternalServerError,
+			Msg:    "Error getting num tokens for os details",
+		}
+	}
+
 	var (
 		numPromptTokens int
 		promptTokens    int
 	)
+
+	var wrapperTokens int
+	if isPlanningStage {
+		wrapperTokens = prompts.PlanningPromptWrapperTokens
+	} else {
+		wrapperTokens = prompts.ImplementationPromptWrapperTokens
+	}
+
 	if iteration == 0 && missingFileResponse == "" {
 		numPromptTokens, err = shared.GetNumTokens(req.Prompt)
 		if err != nil {
@@ -232,13 +351,21 @@ func execTellPlan(
 			}
 			return
 		}
-		promptTokens = prompts.PromptWrapperTokens + numPromptTokens
+
+		promptTokens = wrapperTokens + numPromptTokens + osDetailsTokens
+	} else if iteration > 0 && missingFileResponse == "" {
+		numPromptTokens = prompts.AutoContinuePromptTokens
+		promptTokens = wrapperTokens + numPromptTokens + osDetailsTokens
 	}
 
-	state.tokensBeforeConvo = prompts.CreateSysMsgNumTokens + modelContextTokens + state.latestSummaryTokens + promptTokens
+	if req.ExecEnabled {
+		promptTokens += prompts.ApplyScriptSummaryNumTokens
+	}
+
+	state.tokensBeforeConvo = sysCreateTokens + modelContextTokens + state.latestSummaryTokens + promptTokens
 
 	// print out breakdown of token usage
-	log.Printf("System message tokens: %d\n", prompts.CreateSysMsgNumTokens)
+	log.Printf("System message tokens: %d\n", sysCreateTokens)
 	log.Printf("Context tokens: %d\n", modelContextTokens)
 	log.Printf("Prompt tokens: %d\n", promptTokens)
 	log.Printf("Latest summary tokens: %d\n", state.latestSummaryTokens)
@@ -260,6 +387,11 @@ func execTellPlan(
 		return
 	}
 
+	var applyScriptSummary string
+	if req.ExecEnabled {
+		applyScriptSummary = prompts.ApplyScriptPromptSummary
+	}
+
 	state.replyId = uuid.New().String()
 	state.replyParser = types.NewReplyParser()
 
@@ -278,7 +410,8 @@ func execTellPlan(
 			// if the user is continuing the plan, we need to check whether the previous message was a user message or assistant message
 			lastMessage := state.messages[len(state.messages)-1]
 
-			log.Println("User is continuing plan. Last message:\n\n", lastMessage.Content)
+			log.Println("User is continuing plan. Last message role:", lastMessage.Role)
+			// log.Println("User is continuing plan. Last message:\n\n", lastMessage.Content)
 
 			if lastMessage.Role == openai.ChatMessageRoleUser {
 				// if last message was a user message, we want to remove it from the messages array and then use that last message as the prompt so we can continue from where the user left off
@@ -288,7 +421,7 @@ func execTellPlan(
 				state.messages = state.messages[:len(state.messages)-1]
 				promptMessage = &openai.ChatCompletionMessage{
 					Role:    openai.ChatMessageRoleUser,
-					Content: prompts.GetWrappedPrompt(lastMessage.Content),
+					Content: prompts.GetWrappedPrompt(lastMessage.Content, req.OsDetails, applyScriptSummary, isPlanningStage),
 				}
 
 				state.userPrompt = lastMessage.Content
@@ -300,7 +433,7 @@ func execTellPlan(
 				// otherwise we'll use the continue prompt
 				promptMessage = &openai.ChatCompletionMessage{
 					Role:    openai.ChatMessageRoleUser,
-					Content: prompts.GetWrappedPrompt(prompts.UserContinuePrompt),
+					Content: prompts.GetWrappedPrompt(prompts.UserContinuePrompt, req.OsDetails, applyScriptSummary, isPlanningStage),
 				}
 			}
 
@@ -308,26 +441,34 @@ func execTellPlan(
 		} else {
 			var prompt string
 			if iteration == 0 {
-				prompt = req.Prompt
+				if req.IsChatOnly {
+					prompt = req.Prompt + prompts.ChatOnlyPrompt
+					state.totalRequestTokens += prompts.ChatOnlyPromptTokens
+				} else if req.IsUserDebug {
+					prompt = req.Prompt + prompts.DebugPrompt
+					state.totalRequestTokens += prompts.DebugPromptTokens
+				} else if req.IsApplyDebug {
+					prompt = req.Prompt + prompts.ApplyDebugPrompt
+					state.totalRequestTokens += prompts.ApplyDebugPromptTokens
+				} else {
+					prompt = req.Prompt
+				}
 			} else {
 				prompt = prompts.AutoContinuePrompt
-
-				if autoContinueNextTask != "" {
-					prompt += `
-					Here is the next task:
-				
-					` + autoContinueNextTask + `
-					
-					Continue seamlessly with this task.
-				`
-				}
 			}
 
 			state.userPrompt = prompt
 
+			var finalPrompt string
+			if isContextStage {
+				finalPrompt = prompt
+			} else {
+				finalPrompt = prompts.GetWrappedPrompt(prompt, req.OsDetails, applyScriptSummary, isPlanningStage)
+			}
+
 			promptMessage = &openai.ChatCompletionMessage{
 				Role:    openai.ChatMessageRoleUser,
-				Content: prompts.GetWrappedPrompt(prompt),
+				Content: finalPrompt,
 			}
 		}
 
@@ -335,6 +476,7 @@ func execTellPlan(
 		state.messages = append(state.messages, *promptMessage)
 	} else {
 		log.Println("Missing file response:", missingFileResponse, "setting replyParser")
+		// log.Printf("Current reply content:\n%s\n", active.CurrentReplyContent)
 
 		state.replyParser.AddChunk(active.CurrentReplyContent, true)
 		res := state.replyParser.Read()
@@ -383,17 +525,48 @@ func execTellPlan(
 		})
 
 		if missingFileResponse == shared.RespondMissingFileChoiceSkip {
-			res := state.replyParser.Read()
+			res := state.replyParser.FinishAndRead()
+			skipPrompt := prompts.GetSkipMissingFilePrompt(res.CurrentFilePath)
+			prompt := prompts.GetWrappedPrompt(skipPrompt, req.OsDetails, applyScriptSummary, isPlanningStage) + "\n\n" + skipPrompt // repetition of skip prompt to improve instruction following
+
+			skipPromptTokens, err := shared.GetNumTokens(skipPrompt)
+			if err != nil {
+				log.Printf("Error getting num tokens for skip prompt: %v\n", err)
+				active.StreamDoneCh <- &shared.ApiError{
+					Type:   shared.ApiErrorTypeOther,
+					Status: http.StatusInternalServerError,
+					Msg:    "Error getting num tokens for skip prompt",
+				}
+				return
+			}
+
+			state.totalRequestTokens += skipPromptTokens
 
 			state.messages = append(state.messages, openai.ChatCompletionMessage{
 				Role:    openai.ChatMessageRoleUser,
-				Content: prompts.GetSkipMissingFilePrompt(res.CurrentFilePath),
+				Content: prompt,
 			})
 
 		} else {
+			missingPrompt := prompts.GetMissingFileContinueGeneratingPrompt(res.CurrentFilePath)
+			prompt := prompts.GetWrappedPrompt(missingPrompt, req.OsDetails, applyScriptSummary, isPlanningStage) + "\n\n" + missingPrompt // repetition of missing prompt to improve instruction following
+
+			promptTokens, err = shared.GetNumTokens(prompt)
+			if err != nil {
+				log.Printf("Error getting num tokens for missing file continue prompt: %v\n", err)
+				active.StreamDoneCh <- &shared.ApiError{
+					Type:   shared.ApiErrorTypeOther,
+					Status: http.StatusInternalServerError,
+					Msg:    "Error getting num tokens for missing file continue prompt",
+				}
+				return
+			}
+
+			state.totalRequestTokens += promptTokens
+
 			state.messages = append(state.messages, openai.ChatCompletionMessage{
 				Role:    openai.ChatMessageRoleUser,
-				Content: prompts.MissingFileContinueGeneratingPrompt,
+				Content: prompt,
 			})
 		}
 	}
@@ -403,10 +576,30 @@ func execTellPlan(
 	// 	log.Printf("%s: %s\n", message.Role, message.Content)
 	// }
 
+	// ts := time.Now().Format("2006-01-02-150405")
+	// os.WriteFile(fmt.Sprintf("generations/messages-%s.txt", ts), []byte(spew.Sdump(state.messages)), 0644)
+
+	_, apiErr := hooks.ExecHook(hooks.WillSendModelRequest, hooks.HookParams{
+		Auth: auth,
+		Plan: plan,
+		WillSendModelRequestParams: &hooks.WillSendModelRequestParams{
+			InputTokens:  state.totalRequestTokens,
+			OutputTokens: state.settings.ModelPack.Planner.ReservedOutputTokens,
+			ModelName:    state.settings.ModelPack.Planner.BaseModelConfig.ModelName,
+		},
+	})
+	if apiErr != nil {
+		active.StreamDoneCh <- apiErr
+		return
+	}
+
 	modelReq := openai.ChatCompletionRequest{
-		Model:       state.settings.ModelPack.Planner.BaseModelConfig.ModelName,
-		Messages:    state.messages,
-		Stream:      true,
+		Model:    state.settings.ModelPack.Planner.BaseModelConfig.ModelName,
+		Messages: state.messages,
+		Stream:   true,
+		StreamOptions: &openai.StreamOptions{
+			IncludeUsage: true,
+		},
 		Temperature: state.settings.ModelPack.Planner.Temperature,
 		TopP:        state.settings.ModelPack.Planner.TopP,
 	}
@@ -446,9 +639,10 @@ func execTellPlan(
 			}
 
 			log.Printf("Tell plan: found %d pending builds\n", len(pendingBuildsByPath))
-			// spew.Dump(pendingBuildsByPath)x
+			// spew.Dump(pendingBuildsByPath)
 
 			buildState := &activeBuildStreamState{
+				tellState:     state,
 				clients:       clients,
 				auth:          auth,
 				currentOrgId:  currentOrgId,

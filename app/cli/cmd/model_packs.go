@@ -2,16 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/auth"
 	"gpt4cli/lib"
 	"gpt4cli/term"
-	"os"
 	"strconv"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/olekukonko/tablewriter"
+	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -207,10 +207,8 @@ func createModelPack(cmd *cobra.Command, args []string) {
 	mp.Namer = getModelRoleConfig(customModels, shared.ModelRoleName)
 	mp.CommitMsg = getModelRoleConfig(customModels, shared.ModelRoleCommitMsg)
 	mp.ExecStatus = getModelRoleConfig(customModels, shared.ModelRoleExecStatus)
-	verifier := getModelRoleConfig(customModels, shared.ModelRoleVerifier)
-	mp.Verifier = &verifier
-	autoFix := getModelRoleConfig(customModels, shared.ModelRoleAutoFix)
-	mp.AutoFix = &autoFix
+	wholeFileBuilder := getModelRoleConfig(customModels, shared.ModelRoleWholeFileBuilder)
+	mp.WholeFileBuilder = &wholeFileBuilder
 
 	term.StartSpinner("")
 	apiErr = api.Client.CreateModelPack(mp)

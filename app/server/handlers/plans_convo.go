@@ -3,16 +3,16 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"gpt4cli-server/db"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 
 	"github.com/gorilla/mux"
 )
 
 func ListConvoHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for ListConvoHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -28,7 +28,7 @@ func ListConvoHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {
@@ -61,7 +61,7 @@ func ListConvoHandler(w http.ResponseWriter, r *http.Request) {
 func GetPlanStatusHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for GetPlanStatusHandler")
 
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
@@ -79,7 +79,7 @@ func GetPlanStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := lockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
+	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
 	if unlockFn == nil {
 		return
 	} else {

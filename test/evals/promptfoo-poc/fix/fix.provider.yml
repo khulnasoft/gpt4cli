@@ -1,3 +1,5 @@
+# TODO: Add support for more dynamic creation, support for multiple tools, different API providers parameters, etc.
+
 id: openai:gpt-4o
 config:
   temperature: 0.1

@@ -2,10 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
-	"gpt4cli-server/db"
-	"gpt4cli-server/types"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -14,16 +13,23 @@ import (
 
 func ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for ListUsersHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't list users",
+			Msg:    "Trial user can't list users",
 		})
 		return
 	}
@@ -72,16 +78,23 @@ func ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteOrgUserHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request for DeleteOrgUserHandler")
-	auth := authenticate(w, r, true)
+	auth := Authenticate(w, r, true)
 	if auth == nil {
 		return
 	}
 
-	if auth.User.IsTrial {
+	org, err := db.GetOrg(auth.OrgId)
+	if err != nil {
+		log.Printf("Error getting org: %v\n", err)
+		http.Error(w, "Error getting org: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if org.IsTrial {
 		writeApiError(w, shared.ApiError{
 			Type:   shared.ApiErrorTypeTrialActionNotAllowed,
 			Status: http.StatusForbidden,
-			Msg:    "Anonymous trial user can't delete users",
+			Msg:    "Trial user can't delete users",
 		})
 		return
 	}
@@ -100,7 +113,7 @@ func DeleteOrgUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ensure current user can remove target user
-	removePermission := types.Permission(strings.Join([]string{string(types.PermissionRemoveUser), orgUser.OrgRoleId}, "|"))
+	removePermission := shared.Permission(strings.Join([]string{string(shared.PermissionRemoveUser), orgUser.OrgRoleId}, "|"))
 
 	if !auth.HasPermission(removePermission) {
 		log.Printf("User does not have permission to remove user with role: %v\n", orgUser.OrgRoleId)
@@ -123,16 +136,17 @@ func DeleteOrgUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// verify user isn't the only org owner
-	ownerRoleId, err := db.GetOrgOwnerRoleId()
+	orgOwnerRoleId, err := db.GetOrgOwnerRoleId()
+
 	if err != nil {
 		log.Printf("Error getting org owner role id: %v\n", err)
 		http.Error(w, "Error getting org owner role id: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if orgUser.OrgRoleId == ownerRoleId {
-		numOwners, err := db.NumUsersWithRole(auth.OrgId, ownerRoleId)
+	// verify user isn't the only org owner
+	if orgUser.OrgRoleId == orgOwnerRoleId {
+		numOwners, err := db.NumUsersWithRole(auth.OrgId, orgOwnerRoleId)
 
 		if err != nil {
 			log.Printf("Error getting number of org owners: %v\n", err)

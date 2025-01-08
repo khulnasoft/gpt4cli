@@ -2,13 +2,13 @@ package plan_exec
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/fs"
 	"gpt4cli/stream"
 	streamtui "gpt4cli/stream_tui"
 	"gpt4cli/term"
-	"log"
-	"os"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 )
@@ -22,7 +22,11 @@ func Build(params ExecParams, buildBg bool) (bool, error) {
 		term.OutputErrorAndExit("Error getting context: %v", apiErr)
 	}
 
-	anyOutdated, didUpdate := params.CheckOutdatedContext(contexts)
+	anyOutdated, didUpdate, err := params.CheckOutdatedContext(contexts)
+
+	if err != nil {
+		term.OutputErrorAndExit("error checking outdated context: %v", err)
+	}
 
 	if anyOutdated && !didUpdate {
 		term.StopSpinner()
