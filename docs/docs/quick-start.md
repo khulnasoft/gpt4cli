@@ -15,14 +15,18 @@ curl -sL https://gpt4cli.khulnasoft.com/install.sh | bash
 
 Note that Windows is supported via [WSL](https://learn.microsoft.com/en-us/windows/wsl/about). Gpt4cli only works correctly on Windows in the WSL shell. It doesn't work in the Windows CMD prompt or PowerShell.
 
+## Hosting Options
 
-## Set `OPENAI_API_KEY`
+| # | Option  | Description |
+|---|---------|--------------------------------|
+| 1 | **Gpt4cli Cloud (Integrated Models)** | No separate accounts or API keys are required. This is the quickest way to get started. If you choose this option, skip ahead to the [Create A Plan](#create-a-plan) section below. |
+| 2 | **Gpt4cli Cloud (BYO API Key)** | You'll need accounts and API keys for [OpenRouter.ai](https://openrouter.ai) and [OpenAI](https://platform.openai.com) to get started with the default models. |
+| 3 | **Self-Hosted** | First, follow the [self-hosting guide](./hosting/self-hosting.md) to set up your own Gpt4cli server. You'll also need accounts and API keys for [OpenRouter.ai](https://openrouter.ai) and [OpenAI](https://platform.openai.com) to get started with the default models. |
 
-Gpt4cli uses OpenAI by default. If you don't have an OpenAI account, first [sign up here.](https://platform.openai.com/signup)
-
-Then [generate an API key here](https://platform.openai.com/account/api-keys) and `export` it.
+If you're going with option 2 or 3 above, you'll need to set the `OPENROUTER_API_KEY` and `OPENAI_API_KEY` environment variables before continuing:
 
 ```bash
+export OPENROUTER_API_KEY=...
 export OPENAI_API_KEY=...
 ```
 
@@ -51,6 +55,8 @@ Now **create your first plan** with `gpt4cli new`.
 ```bash
 gpt4cli new
 ```
+
+*Note: if you're using Gpt4cli Cloud, you'll be prompted at this point to start a trial.*
 
 ## Load In Context
 
@@ -86,7 +92,13 @@ Or pass it inline (use enter for line breaks):
 gpt4cli tell "add a new line chart showing the number of foobars over time to components/charts.tsx"
 ```
 
-Gpt4cli will make a plan for your task and then implement that plan in code. **The changes won't yet be applied to your project files.** Instead, they'll accumulate in Gpt4cli's sandbox. 
+Gpt4cli will make a plan for your task and then implement that plan in code. **The changes won't yet be applied to your project files.** Instead, they'll accumulate in Gpt4cli's sandbox.
+
+**Note**: if you're not quite ready to give Gpt4cli a task yet and want to ask questions or chat a bit first, you can use `gpt4cli chat` instead of `gpt4cli tell`. It works the same way, but it makes Gpt4cli respond conversationally and prevents it from making any changes yet. Once you're ready, you can use `gpt4cli tell` to go ahead with the implementation.
+
+```bash
+gpt4cli chat "is it clear from the context how to add a new line chart?"
+```
 
 ## Review The Changes
 
@@ -96,10 +108,10 @@ When Gpt4cli has finished with your task, you can review the proposed changes wi
 gpt4cli diff
 ```
 
-Or you can view them in Gpt4cli's changes TUI:
+Or you can view them in a local browser UI:
 
 ```bash
-gpt4cli changes
+gpt4cli diff --ui
 ```
 
 ## Iterate If Needed
@@ -132,8 +144,6 @@ To reject changes to a file (or multiple files), you can run `gpt4cli reject` wi
 gpt4cli reject components/charts.tsx
 ```
 
-You can also reject changes using the `r` hotkey in the `gpt4cli changes` TUI.
-
 Once the bad update is rejected, copy the changes from the plan's output or run `gpt4cli convo` to output the full conversation and copy them from there. Then apply the updates to that file yourself.
 
 ## Apply The Changes
@@ -146,7 +156,23 @@ gpt4cli apply
 
 If you're in a git repository, Gpt4cli will give you the option of grouping the changes into a git commit with an automatically generated commit message.
 
-You've now experienced the core workflow of Gpt4cli! While there are more commands and options available, those described above are what you'll be using most often. 
+## Auto-Debug Problems
+
+If you have a test suite, type checker, or start command that's failing after you apply the changes, you can use the `gpt4cli debug` command to send the output to Gpt4cli and ask it to automatically fix the problem(s).
+
+```bash
+gpt4cli debug 'npm test'
+```
+
+This will make Gpt4cli run the given command, send the output to the LLM, attempt a fix, apply the changes, and then run the command again to verify that the problem is fixed. By default, Gpt4cli will try up to 5 times before giving up, but you can also specify the number of tries like this:
+
+```bash
+gpt4cli debug 10 'npm test' # try 10 times
+```
+
+---
+
+**You've now experienced the core workflow of Gpt4cli!** While there are more commands and options available, those described above are what you'll be using most often. 
 
 ## CLI Help
 
@@ -164,11 +190,13 @@ Here are the same commands we went through above using aliases to minimize typin
 g4c new
 g4c l some-file.ts another-file.ts # load
 g4c t -f prompt.txt # tell
+g4c ct "is it clear from the context how to add a new line chart?" # chat
 g4c diff
-g4c ch # changes
+g4c diff --ui
 g4c log
 g4c rw e7e06e0 # rewind
 g4c c # continue
 g4c rj components/charts.tsx # reject
 g4c ap # apply
+g4c db 'npm test' # debug
 ```

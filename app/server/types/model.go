@@ -20,6 +20,22 @@ type ChangesWithLineNums struct {
 	Changes  []*shared.StreamedChangeWithLineNums `json:"changes"`
 }
 
+type UpdatedChangesWithLineNums struct {
+	EntireFileReasoning string `json:"entireFileReasoning"`
+	EntireFile          bool   `json:"entireFile"`
+	Problems            string `json:"problems"`
+	OriginalSections    []struct {
+		Description      string           `json:"description"`
+		Reasoning        string           `json:"reasoning"`
+		SectionStartLine string           `json:"sectionStartLine"`
+		SectionEndLine   string           `json:"sectionEndLine"`
+		ShouldChange     bool             `json:"shouldChange"`
+		ShouldRemove     bool             `json:"shouldRemove"`
+		Structure        shared.Structure `json:"structure"`
+	} `json:"originalSections"`
+	Changes []*shared.StreamedChangeWithLineNumsUpdated `json:"changes"`
+}
+
 // type StreamedChangesFull struct {
 // 	Changes []*shared.StreamedChangeFull `json:"changes"`
 // }

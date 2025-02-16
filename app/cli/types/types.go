@@ -5,28 +5,14 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
-type ClientAccount struct {
-	IsCloud  bool   `json:"isCloud"`
-	Host     string `json:"host"`
-	Email    string `json:"email"`
-	UserName string `json:"userName"`
-	UserId   string `json:"userId"`
-	Token    string `json:"token"`
-	IsTrial  bool   `json:"isTrial"`
-}
-
-type ClientAuth struct {
-	ClientAccount
-	OrgId   string `json:"orgId"`
-	OrgName string `json:"orgName"`
-}
-
 type LoadContextParams struct {
-	Note            string
-	Recursive       bool
-	NamesOnly       bool
-	ForceSkipIgnore bool
-	ImageDetail     openai.ImageURLDetail
+	Note              string
+	Recursive         bool
+	NamesOnly         bool
+	ForceSkipIgnore   bool
+	ImageDetail       openai.ImageURLDetail
+	DefsOnly          bool
+	SkipIgnoreWarning bool
 }
 
 type ContextOutdatedResult struct {
@@ -37,6 +23,7 @@ type ContextOutdatedResult struct {
 	NumFiles        int
 	NumUrls         int
 	NumTrees        int
+	NumMaps         int
 	NumFilesRemoved int
 	NumTreesRemoved int
 }
@@ -61,6 +48,10 @@ type CurrentProjectSettings struct {
 	Id string `json:"id"`
 }
 
+type CurrentPlanSettingsByAccount map[string]*CurrentPlanSettings
+type PlanSettingsByAccount map[string]*PlanSettings
+type CurrentProjectSettingsByAccount map[string]*CurrentProjectSettings
+
 type ChangesUIScrollReplacement struct {
 	OldContent        string
 	NewContent        string
@@ -70,3 +61,5 @@ type ChangesUIScrollReplacement struct {
 type ChangesUIViewportsUpdate struct {
 	ScrollReplacement *ChangesUIScrollReplacement
 }
+
+type OnErrFn func(errMsg string, errArgs ...interface{})

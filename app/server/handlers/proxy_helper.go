@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"fmt"
-	"gpt4cli-server/db"
-	"gpt4cli-server/host"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"gpt4cli-server/db"
+	"gpt4cli-server/host"
 	"time"
 
 	"github.com/khulnasoft/gpt4cli/shared"

@@ -2,13 +2,13 @@ package changes_tui
 
 import (
 	"fmt"
+	"log"
 	"gpt4cli/api"
 	"gpt4cli/lib"
-	"log"
 
 	"github.com/atotto/clipboard"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/muesli/reflow/wrap"
+	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func (m *changesUIModel) rejectFile() (*shared.CurrentPlanState, *shared.ApiError) {

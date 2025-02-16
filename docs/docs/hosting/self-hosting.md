@@ -5,7 +5,7 @@ sidebar_label: Self-Hosting
 
 # Self-Hosting
 
-Gpt4cli is open source and uses a client-server architecture. The server can be self-hosted. You can run either run it locally or on a cloud server that you control. 
+Gpt4cli is open source and uses a client-server architecture. The server can be self-hosted. You can either run it locally or on a cloud server that you control. 
 
 ## Quickstart
 
@@ -94,7 +94,13 @@ You'll also need a `DATABASE_URL`:
 export DATABASE_URL=postgres://user:password@host:5432/gpt4cli # replace with your own database URL
 ```
 
-If you're running in production mode, you'll need to connect to SMTP to send emails. Set the following environment variables:
+If you're running in production mode, set `API_HOST` to the host the API server is running on:
+
+```bash
+export API_HOST=api.your-domain.ai
+```
+
+In production mode, you'll also need to connect to SMTP to send emails. Set the following environment variables:
 
 ```bash
 export SMTP_HOST=smtp.example.com
@@ -125,6 +131,7 @@ docker run -p 8080:8080 \
   -v ~/gpt4cli-server:/gpt4cli-server \
   -e DATABASE_URL \
   -e GOENV \
+  -e API_HOST \
   -e SMTP_HOST \ 
   -e SMTP_PORT \
   -e SMTP_USER \
@@ -132,7 +139,7 @@ docker run -p 8080:8080 \
   gpt4cli-server
 ```
 
-The SMTP environment variables above are only required if you're running in [production mode](#development-vs-production).
+The API_HOST and SMTP environment variables above are only required if you're running in [production mode](#development-vs-production).
 
 ### Run From Source
 
@@ -144,6 +151,8 @@ cd gpt4cli/
 VERSION=$(cat app/server/version.txt) # or use the version you want
 git checkout server/v$VERSION
 cd app/server
+export GOENV=development # or production
+export DATABASE_URL=postgres://user:password@host:5432/gpt4cli # replace with your own database URL
 export GPT4CLI_BASE_DIR=~/gpt4cli-server # or another directory where you want to store files
 go run main.go
 ```

@@ -3,9 +3,9 @@ package types
 import (
 	"context"
 	"encoding/json"
-	"gpt4cli-server/db"
 	"log"
 	"net/http"
+	"gpt4cli-server/db"
 	"sync"
 	"time"
 
@@ -13,28 +13,22 @@ import (
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
-const MaxStreamRate = 50 * time.Millisecond
-
-// const MaxConcurrentBuildStreams = 3 // otherwise we get EOF errors from openai
+const MaxStreamRate = 70 * time.Millisecond
 
 type ActiveBuild struct {
-	ReplyId                  string
-	FileDescription          string
-	FileContent              string
-	FileContentTokens        int
-	CurrentFileTokens        int
-	Path                     string
-	Idx                      int
-	WithLineNumsBuffer       string
-	WithLineNumsBufferTokens int
-	VerifyBuffer             string
-	VerifyBufferTokens       int
-	FixBuffer                string
-	FixBufferTokens          int
-	Success                  bool
-	Error                    error
-	IsVerification           bool
-	ToVerifyUpdatedState     string
+	ReplyId           string
+	FileDescription   string
+	FileContent       string
+	FileContentTokens int
+	CurrentFileTokens int
+	Path              string
+	Idx               int
+	Success           bool
+	Error             error
+	IsMoveOp          bool
+	MoveDestination   string
+	IsRemoveOp        bool
+	IsResetOp         bool
 }
 
 type subscription struct {
@@ -61,24 +55,27 @@ type ActivePlan struct {
 	CancelModelStreamFn     context.CancelFunc
 	SummaryCtx              context.Context
 	SummaryCancelFn         context.CancelFunc
-	LatestSummaryCh         chan *db.ConvoSummary
-	Contexts                []*db.Context
-	ContextsByPath          map[string]*db.Context
-	Files                   []string
-	BuiltFiles              map[string]bool
-	IsBuildingByPath        map[string]bool
-	CurrentReplyContent     string
-	NumTokens               int
-	MessageNum              int
-	BuildQueuesByPath       map[string][]*ActiveBuild
-	RepliesFinished         bool
-	StreamDoneCh            chan *shared.ApiError
-	ModelStreamId           string
-	MissingFilePath         string
-	MissingFileResponseCh   chan shared.RespondMissingFileChoice
-	AllowOverwritePaths     map[string]bool
-	SkippedPaths            map[string]bool
-	StoredReplyIds          []string
+	// LatestSummaryCh         chan *db.ConvoSummary
+	Contexts              []*db.Context
+	ContextsByPath        map[string]*db.Context
+	Files                 []string
+	BuiltFiles            map[string]bool
+	IsBuildingByPath      map[string]bool
+	CurrentReplyContent   string
+	NumTokens             int
+	MessageNum            int
+	BuildQueuesByPath     map[string][]*ActiveBuild
+	RepliesFinished       bool
+	StreamDoneCh          chan *shared.ApiError
+	ModelStreamId         string
+	MissingFilePath       string
+	MissingFileResponseCh chan shared.RespondMissingFileChoice
+	AutoContext           bool
+	AutoLoadContextCh     chan struct{}
+	AllowOverwritePaths   map[string]bool
+	SkippedPaths          map[string]bool
+	StoredReplyIds        []string
+	DidEditFiles          bool
 
 	subscriptions  map[string]*subscription
 	subscriptionMu sync.Mutex
@@ -89,7 +86,7 @@ type ActivePlan struct {
 	streamMessageBuffer   []shared.StreamMessage
 }
 
-func NewActivePlan(orgId, userId, planId, branch, prompt string, buildOnly bool) *ActivePlan {
+func NewActivePlan(orgId, userId, planId, branch, prompt string, buildOnly, autoContext bool) *ActivePlan {
 	ctx, cancel := context.WithCancel(context.Background())
 	// child context for model stream so we can cancel it separately if needed
 	modelStreamCtx, cancelModelStream := context.WithCancel(ctx)
@@ -118,6 +115,8 @@ func NewActivePlan(orgId, userId, planId, branch, prompt string, buildOnly bool)
 		IsBuildingByPath:      map[string]bool{},
 		StreamDoneCh:          make(chan *shared.ApiError),
 		MissingFileResponseCh: make(chan shared.RespondMissingFileChoice),
+		AutoContext:           autoContext,
+		AutoLoadContextCh:     make(chan struct{}),
 		AllowOverwritePaths:   map[string]bool{},
 		SkippedPaths:          map[string]bool{},
 		streamCh:              make(chan string),
@@ -153,54 +152,75 @@ func NewActivePlan(orgId, userId, planId, branch, prompt string, buildOnly bool)
 }
 
 func (ap *ActivePlan) FlushStreamBuffer() {
-	// log.Println("ActivePlan: flush stream buffer")
-
 	ap.streamMu.Lock()
 	if len(ap.streamMessageBuffer) == 0 {
-		// log.Println("ActivePlan: stream buffer empty")
 		ap.streamMu.Unlock()
 		return
 	}
 
-	// log.Printf("ActivePlan: flushing %d messages from stream buffer\n", len(ap.streamMessageBuffer))
-
-	// construct a multi message from the buffer
-	multiMsg := shared.StreamMessage{
-		Type:           shared.StreamMessageMulti,
-		StreamMessages: ap.streamMessageBuffer,
-	}
+	bufferToFlush := ap.streamMessageBuffer
 	ap.streamMessageBuffer = []shared.StreamMessage{}
-
 	ap.streamMu.Unlock()
 
-	ap.Stream(multiMsg)
+	if len(bufferToFlush) == 1 {
+		log.Println("ActivePlan.FlushStreamBuffer: flushing single message")
+		ap.Stream(bufferToFlush[0])
+	} else {
+		log.Println("ActivePlan.FlushStreamBuffer: flushing multi-message")
+		ap.Stream(shared.StreamMessage{
+			Type:           shared.StreamMessageMulti,
+			StreamMessages: bufferToFlush,
+		})
+	}
 }
 
 func (ap *ActivePlan) Stream(msg shared.StreamMessage) {
-	// log.Printf("ActivePlan: received Stream message: %v\n", msg)
+	// log.Println("ActivePlan.Stream:")
+	// log.Println(msg)
 
 	ap.streamMu.Lock()
-	defer ap.streamMu.Unlock()
 
-	if msg.Type != shared.StreamMessageFinished {
+	skipBuffer := false
+	if msg.Type == shared.StreamMessagePromptMissingFile || msg.Type == shared.StreamMessageFinished {
+		skipBuffer = true
+	}
+
+	// Special messages bypass buffering
+	if !skipBuffer {
+		// log.Println("ActivePlan.Stream: time since last message sent:", time.Since(ap.lastStreamMessageSent))
+
 		if time.Since(ap.lastStreamMessageSent) < MaxStreamRate {
-			// log.Println("ActivePlan: stream rate limiting -- buffering message")
+			// log.Println("ActivePlan.Stream: buffering message")
+
+			// Buffer the message
 			ap.streamMessageBuffer = append(ap.streamMessageBuffer, msg)
+			ap.streamMu.Unlock()
 			return
 		} else if len(ap.streamMessageBuffer) > 0 {
-			// log.Println("ActivePlan: stream buffer not empty -- flushing buffer before sending message")
-			ap.streamMessageBuffer = append(ap.streamMessageBuffer, msg)
+			// log.Println("ActivePlan.Stream: flushing buffer")
 
-			// unlock before recursive call
+			// Need to flush buffer first
+			ap.streamMessageBuffer = append(ap.streamMessageBuffer, msg)
+			bufferToFlush := ap.streamMessageBuffer
+			ap.streamMessageBuffer = []shared.StreamMessage{}
 			ap.streamMu.Unlock()
-			ap.FlushStreamBuffer()
-			ap.streamMu.Lock() // re-lock after recursive call
+
+			// log.Println("ActivePlan.Stream: sending multi-message:")
+			// log.Println(bufferToFlush)
+
+			// Send as multi-message
+			ap.Stream(shared.StreamMessage{
+				Type:           shared.StreamMessageMulti,
+				StreamMessages: bufferToFlush,
+			})
 			return
 		}
 	}
 
+	// Direct send path
 	msgJson, err := json.Marshal(msg)
 	if err != nil {
+		ap.streamMu.Unlock()
 		ap.StreamDoneCh <- &shared.ApiError{
 			Type:   shared.ApiErrorTypeOther,
 			Status: http.StatusInternalServerError,
@@ -209,37 +229,58 @@ func (ap *ActivePlan) Stream(msg shared.StreamMessage) {
 		return
 	}
 
-	// log.Printf("ActivePlan: sending stream message: %s\n", string(msgJson))
+	if skipBuffer && len(ap.streamMessageBuffer) > 0 {
+		// Handle any remaining buffered messages before sending the message
+		// log.Println("ActivePlan.Stream: message is a skip buffer type and there are buffered messages")
+		// log.Println("ActivePlan.Stream: flushing remaining buffered messages before skip buffer message is sent")
+		bufferToFlush := ap.streamMessageBuffer
+		ap.streamMessageBuffer = []shared.StreamMessage{}
+		ap.streamMu.Unlock()
 
-	if msg.Type == shared.StreamMessageFinished {
-		// send full buffer if we got a finished message
-		if len(ap.streamMessageBuffer) > 0 {
-			// log.Println("ActivePlan: finished message -- sending stream buffer first")
+		log.Println("Flushing buffered messages before finishing")
+		// log.Println("ActivePlan.Stream: sending multi-message:")
+		// log.Println(bufferToFlush)
+		ap.Stream(shared.StreamMessage{
+			Type:           shared.StreamMessageMulti,
+			StreamMessages: bufferToFlush,
+		})
+		log.Println("ActivePlan.Stream: finished flushing buffered messages. waiting 50ms before sending skip buffer type message")
+		time.Sleep(50 * time.Millisecond)
+		log.Println("ActivePlan.Stream: sending finish message")
+		ap.Stream(msg) // send the skip buffer type message
 
-			// unlock before recursive call
+		ap.streamMu.Lock()
+		now := time.Now()
+		if now.After(ap.lastStreamMessageSent) {
+			ap.lastStreamMessageSent = now
+		}
+
+		if msg.Type == shared.StreamMessageFinished {
 			ap.streamMu.Unlock()
-			ap.FlushStreamBuffer()
-			ap.streamMu.Lock() // re-lock after recursive call
-
-			// sleep a little before the final message
+			// wait for the finish message to be sent then send the done signal
+			log.Println("ActivePlan.Stream: waiting 50ms before sending done signal")
 			time.Sleep(50 * time.Millisecond)
+			log.Println("ActivePlan.Stream: sending done signal")
+			ap.StreamDoneCh <- nil
+			return
 		}
 	}
 
-	// log.Println("ActivePlan: sending stream message")
+	// log.Println("ActivePlan.Stream: sending direct message")
+	// log.Println(string(msgJson))
 
 	ap.streamCh <- string(msgJson)
-
-	// log.Println("ActivePlan: sent stream message")
 
 	now := time.Now()
 	if now.After(ap.lastStreamMessageSent) {
 		ap.lastStreamMessageSent = now
 	}
+	ap.streamMu.Unlock()
 
 	if msg.Type == shared.StreamMessageFinished {
-		// Wait briefly to allow last stream message to be sent
-		time.Sleep(100 * time.Millisecond)
+		log.Println("ActivePlan.Stream: waiting 50ms before sending done signal")
+		time.Sleep(50 * time.Millisecond)
+		log.Println("ActivePlan.Stream: sending done signal")
 		ap.StreamDoneCh <- nil
 	}
 }
@@ -344,4 +385,10 @@ func (sub *subscription) enqueueMessage(msg string) {
 	sub.messageQueue = append(sub.messageQueue, msg)
 	sub.mu.Unlock()
 	sub.cond.Signal() // Signal the waiting goroutine that a new message is available
+}
+
+func (ap *ActivePlan) Finish() {
+	ap.Stream(shared.StreamMessage{
+		Type: shared.StreamMessageFinished,
+	})
 }

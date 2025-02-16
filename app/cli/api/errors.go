@@ -2,15 +2,16 @@ package api
 
 import (
 	"encoding/json"
-	"gpt4cli/auth"
 	"log"
 	"net/http"
+	"gpt4cli/auth"
+	"gpt4cli/term"
 	"strings"
 
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
-func handleApiError(r *http.Response, errBody []byte) *shared.ApiError {
+func HandleApiError(r *http.Response, errBody []byte) *shared.ApiError {
 	// Check if the response is JSON
 	if r.Header.Get("Content-Type") != "application/json" {
 		return &shared.ApiError{
@@ -29,6 +30,8 @@ func handleApiError(r *http.Response, errBody []byte) *shared.ApiError {
 			Msg:    strings.TrimSpace(string(errBody)),
 		}
 	}
+
+	term.HandleApiError(&apiError)
 
 	return &apiError
 }

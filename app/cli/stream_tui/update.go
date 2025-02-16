@@ -2,11 +2,11 @@ package streamtui
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"gpt4cli/api"
 	"gpt4cli/lib"
 	"gpt4cli/term"
-	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -25,23 +25,23 @@ func (m streamUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case spinner.TickMsg:
-		var cmds []tea.Cmd
 		if m.processing || m.starting {
-			spinnerModel, cmd := m.spinner.Update(msg)
+			spinnerModel, _ := m.spinner.Update(msg)
 			m.spinner = spinnerModel
-			cmds = append(cmds, cmd)
 		}
 		if m.building {
-			buildSpinnerModel, cmd := m.buildSpinner.Update(msg)
+			buildSpinnerModel, _ := m.buildSpinner.Update(msg)
 			m.buildSpinner = buildSpinnerModel
-			cmds = append(cmds, cmd)
 		}
-		return m, tea.Batch(cmds...)
+		return m, m.Tick()
 
 	case tea.WindowSizeMsg:
 		m.windowResized(msg.Width, msg.Height)
 
 	case shared.StreamMessage:
+		if !m.updateDebouncer.ShouldUpdate() {
+			return m, nil // Skip this update if it's too soon
+		}
 		return m.streamUpdate(&msg, false)
 
 	case delayFileRestartMsg:
@@ -60,11 +60,12 @@ func (m streamUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 
-		case bubbleKey.Matches(msg, m.keymap.quit):
-			m.background = true
-			return &m, tea.Quit
+		// more intuitive for ctrl+c to stop than send to background
+		// case bubbleKey.Matches(msg, m.keymap.quit):
+		// 	m.background = true
+		// 	return &m, tea.Quit
 
-		case bubbleKey.Matches(msg, m.keymap.stop):
+		case bubbleKey.Matches(msg, m.keymap.stop) || bubbleKey.Matches(msg, m.keymap.quit):
 			apiErr := api.Client.StopPlan(lib.CurrentPlanId, lib.CurrentBranch)
 			if apiErr != nil {
 				log.Println("stop plan api error:", apiErr)
@@ -124,7 +125,7 @@ func (m *streamUIModel) updateReplyDisplay() {
 	s := ""
 
 	if m.prompt != "" {
-		promptTxt, _ := term.GetPlain(m.prompt)
+		promptTxt := term.GetPlain(m.prompt)
 
 		s += color.New(color.BgGreen, color.Bold, color.FgHiWhite).Sprintf(" 💬 User prompt 👇 ")
 		s += "\n\n" + strings.TrimSpace(promptTxt) + "\n"
@@ -232,32 +233,9 @@ func (m *streamUIModel) scrollEnd() {
 }
 
 func (m *streamUIModel) streamUpdate(msg *shared.StreamMessage, deferUIUpdate bool) (tea.Model, tea.Cmd) {
-	checkMissingFileFn := func() {
-		if msg.MissingFilePath != "" {
-			m.promptingMissingFile = true
-			m.missingFilePath = msg.MissingFilePath
-
-			bytes, err := os.ReadFile(m.missingFilePath)
-			if err != nil {
-				log.Println("failed to read file:", err)
-				m.err = fmt.Errorf("failed to read file: %w", err)
-				return
-			}
-			m.missingFileContent = string(bytes)
-
-			numTokens, err := shared.GetNumTokens(m.missingFileContent)
-
-			if err != nil {
-				log.Println("failed to get num tokens:", err)
-				m.err = fmt.Errorf("failed to get num tokens: %w", err)
-				return
-			}
-
-			m.missingFileTokens = numTokens
-		}
-	}
 
 	// log.Println("streamUI received message:", msg.Type)
+	// log.Println(spew.Sdump(msg))
 
 	switch msg.Type {
 
@@ -287,30 +265,37 @@ func (m *streamUIModel) streamUpdate(msg *shared.StreamMessage, deferUIUpdate bo
 			m.buildOnly = true
 		}
 		if len(msg.InitReplies) > 0 {
-			m.reply = strings.Join(msg.InitReplies, "\n\n👇\n")
+			m.reply = strings.Join(msg.InitReplies, "\n\n👇\n\n")
 		}
 		m.updateReplyDisplay()
 
-		checkMissingFileFn()
+		return m.checkMissingFile(msg)
 
 	case shared.StreamMessagePromptMissingFile:
-		checkMissingFileFn()
+		return m.checkMissingFile(msg)
 
 	case shared.StreamMessageReply:
+		// ignore empty reply messages
+		if msg.ReplyChunk == "" {
+			return m, nil
+		}
+
 		if m.starting {
 			m.starting = false
 		}
 
 		if m.processing {
+			log.Println("Non-empty message reply, setting processing to false")
 			m.processing = false
-			if m.promptedMissingFile {
+			if m.promptedMissingFile || m.autoLoadedMissingFile {
+				log.Println("Prompted missing file or auto loaded missing file, resetting (and skipping 👇 marker)")
 				m.promptedMissingFile = false
+				m.autoLoadedMissingFile = false
 			} else {
-				m.reply += "\n\n👇\n"
+				log.Println("Not prompted missing file or auto loaded missing file, adding 👇 marker")
+				m.reply += "\n\n👇\n\n"
 			}
 		}
-
-		// log.Println("reply chunk:", msg.ReplyChunk)
 
 		m.reply += msg.ReplyChunk
 
@@ -326,6 +311,12 @@ func (m *streamUIModel) streamUpdate(msg *shared.StreamMessage, deferUIUpdate bo
 		m.building = true
 		wasFinished := m.finishedByPath[msg.BuildInfo.Path]
 		nowFinished := msg.BuildInfo.Finished
+
+		if msg.BuildInfo.Removed {
+			m.removedByPath[msg.BuildInfo.Path] = true
+		} else {
+			m.removedByPath[msg.BuildInfo.Path] = false
+		}
 
 		if msg.BuildInfo.Finished {
 			m.tokensByPath[msg.BuildInfo.Path] = 0
@@ -345,22 +336,27 @@ func (m *streamUIModel) streamUpdate(msg *shared.StreamMessage, deferUIUpdate bo
 			m.updateViewportDimensions()
 		}
 
-		cmds := []tea.Cmd{m.buildSpinner.Tick}
-		if m.processing && !m.finished {
-			cmds = append(cmds, m.spinner.Tick)
-		}
-		return m, tea.Batch(cmds...)
+		return m, m.Tick()
 
 	case shared.StreamMessageDescribing:
+		log.Println("Message describing, setting processing to true")
 		m.processing = true
 
-		cmds := []tea.Cmd{m.spinner.Tick}
+		return m, m.Tick()
 
-		if m.building {
-			cmds = append(cmds, m.buildSpinner.Tick)
+	case shared.StreamMessageLoadContext:
+		log.Println("Stream message auto-load context")
+		msg, err := lib.AutoLoadContextFiles(msg.LoadContextFiles)
+		if err != nil {
+			log.Println("failed to auto load context files:", err)
+			m.err = err
+			return m, tea.Quit
 		}
 
-		return m, tea.Batch(cmds...)
+		m.reply += "\n\n" + msg + "\n\n"
+		m.updateReplyDisplay()
+
+		return m, m.Tick()
 
 	case shared.StreamMessageError:
 		m.apiErr = msg.Error
@@ -376,10 +372,11 @@ func (m *streamUIModel) streamUpdate(msg *shared.StreamMessage, deferUIUpdate bo
 		return m, tea.Quit
 
 	case shared.StreamMessageRepliesFinished:
+		log.Println("Replies finished, setting processing to false")
 		m.processing = false
 
 		if m.building {
-			return m, m.buildSpinner.Tick
+			return m, m.Tick()
 		}
 	}
 
@@ -479,5 +476,70 @@ func (m *streamUIModel) selectedMissingFileOpt() (tea.Model, tea.Cmd) {
 	m.promptedMissingFile = true
 	m.processing = true
 
-	return m, m.spinner.Tick
+	return m, func() tea.Msg {
+		<-m.sharedTicker.C
+		return spinner.TickMsg{}
+	}
+}
+
+func (m *streamUIModel) checkMissingFile(msg *shared.StreamMessage) (tea.Model, tea.Cmd) {
+	if msg.MissingFilePath != "" {
+		if msg.MissingFileAutoContext {
+			m.processing = true
+			m.autoLoadedMissingFile = true
+
+			return m, tea.Batch(
+				func() tea.Msg {
+					<-m.sharedTicker.C
+					return spinner.TickMsg{}
+				},
+				func() tea.Msg {
+					bytes, err := os.ReadFile(msg.MissingFilePath)
+					if err != nil {
+						log.Println("failed to read file:", err)
+						m.err = fmt.Errorf("failed to read file: %w", err)
+						return tea.Quit
+					}
+					content := string(bytes)
+
+					apiErr := api.Client.RespondMissingFile(lib.CurrentPlanId, lib.CurrentBranch, shared.RespondMissingFileRequest{
+						Choice:   shared.RespondMissingFileChoiceLoad,
+						FilePath: msg.MissingFilePath,
+						Body:     content,
+					})
+
+					if apiErr != nil {
+						log.Println("missing file prompt api error:", apiErr)
+						m.apiErr = apiErr
+						return tea.Quit
+					}
+
+					return nil
+				},
+			)
+		}
+
+		m.promptingMissingFile = true
+		m.missingFilePath = msg.MissingFilePath
+
+		bytes, err := os.ReadFile(m.missingFilePath)
+		if err != nil {
+			log.Println("failed to read file:", err)
+			m.err = fmt.Errorf("failed to read file: %w", err)
+			return m, nil
+		}
+		m.missingFileContent = string(bytes)
+
+		numTokens, err := shared.GetNumTokens(m.missingFileContent)
+
+		if err != nil {
+			log.Println("failed to get num tokens:", err)
+			m.err = fmt.Errorf("failed to get num tokens: %w", err)
+			return m, nil
+		}
+
+		m.missingFileTokens = numTokens
+	}
+
+	return m, nil
 }

@@ -19,7 +19,7 @@ Grab the appropriate binary for your platform from the latest [release](https://
 
 ```bash
 git clone https://github.com/khulnasoft/gpt4cli.git
-git clone https://github.com/khulnasoft/gpt4cli.git
+git clone https://github.com/khulnasoft-lab/survey.git
 cd gpt4cli/app/cli
 go build -ldflags "-X gpt4cli/version.Version=$(cat version.txt)"
 mv gpt4cli /usr/local/bin # adapt as needed for your system

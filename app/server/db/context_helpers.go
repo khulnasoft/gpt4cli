@@ -1,12 +1,16 @@
 package db
 
 import (
+	"context"
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"gpt4cli-server/syntax/file_map"
 	"sort"
 	"strings"
 	"sync"
@@ -16,7 +20,9 @@ import (
 	"github.com/khulnasoft/gpt4cli/shared"
 )
 
-func GetPlanContexts(orgId, planId string, includeBody bool) ([]*Context, error) {
+type Ctx context.Context
+
+func GetPlanContexts(orgId, planId string, includeBody, includeMapParts bool) ([]*Context, error) {
 	var contexts []*Context
 	contextDir := getPlanContextDir(orgId, planId)
 
@@ -30,31 +36,36 @@ func GetPlanContexts(orgId, planId string, includeBody bool) ([]*Context, error)
 		return nil, fmt.Errorf("error reading context dir: %v", err)
 	}
 
-	errCh := make(chan error, len(files)/2)
-	contextCh := make(chan *Context, len(files)/2)
+	errCh := make(chan error, len(files))
+	var mu sync.Mutex
 
 	// read each context file
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".meta") {
 			go func(file os.DirEntry) {
-				context, err := GetContext(orgId, planId, strings.TrimSuffix(file.Name(), ".meta"), includeBody)
+				context, err := GetContext(orgId, planId, strings.TrimSuffix(file.Name(), ".meta"), includeBody, includeMapParts)
+
+				mu.Lock()
+				defer mu.Unlock()
+				contexts = append(contexts, context)
 
 				if err != nil {
 					errCh <- fmt.Errorf("error reading context file: %v", err)
 					return
 				}
 
-				contextCh <- context
+				errCh <- nil
 			}(file)
+		} else {
+			// only processing meta files here, so just send nil for accurate count
+			errCh <- nil
 		}
 	}
 
-	for i := 0; i < len(files)/2; i++ {
-		select {
-		case err := <-errCh:
+	for i := 0; i < len(files); i++ {
+		err := <-errCh
+		if err != nil {
 			return nil, fmt.Errorf("error reading context files: %v", err)
-		case context := <-contextCh:
-			contexts = append(contexts, context)
 		}
 	}
 
@@ -66,7 +77,7 @@ func GetPlanContexts(orgId, planId string, includeBody bool) ([]*Context, error)
 	return contexts, nil
 }
 
-func GetContext(orgId, planId, contextId string, includeBody bool) (*Context, error) {
+func GetContext(orgId, planId, contextId string, includeBody, includeMapParts bool) (*Context, error) {
 	contextDir := getPlanContextDir(orgId, planId)
 
 	// read the meta file
@@ -95,6 +106,22 @@ func GetContext(orgId, planId, contextId string, includeBody bool) (*Context, er
 		context.Body = string(bodyBytes)
 	}
 
+	if includeMapParts {
+		// read the map parts file
+		mapPartsPath := filepath.Join(contextDir, strings.TrimSuffix(contextId, ".meta")+".map-parts")
+		mapPartsBytes, err := os.ReadFile(mapPartsPath)
+		if !os.IsNotExist(err) {
+			if err != nil {
+				return nil, fmt.Errorf("error reading context map parts file: %v", err)
+			}
+
+			err = json.Unmarshal(mapPartsBytes, &context.MapParts)
+			if err != nil {
+				return nil, fmt.Errorf("error unmarshalling context map parts file: %v", err)
+			}
+		}
+	}
+
 	return &context, nil
 }
 
@@ -108,7 +135,7 @@ func ContextRemove(orgId, planId string, contexts []*Context) error {
 	for _, context := range contexts {
 		filesToUpdate[context.FilePath] = ""
 		contextDir := getPlanContextDir(orgId, planId)
-		for _, ext := range []string{".meta", ".body"} {
+		for _, ext := range []string{".meta", ".body", ".map-parts"} {
 			go func(context *Context, dir, ext string) {
 				errCh <- os.Remove(filepath.Join(dir, context.Id+ext))
 			}(context, contextDir, ext)
@@ -117,7 +144,7 @@ func ContextRemove(orgId, planId string, contexts []*Context) error {
 
 	for i := 0; i < numFiles; i++ {
 		err := <-errCh
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("error removing context file: %v", err)
 		}
 	}
@@ -130,7 +157,10 @@ func ContextRemove(orgId, planId string, contexts []*Context) error {
 	return nil
 }
 
-func StoreContext(context *Context) error {
+func StoreContext(context *Context, skipMapCache bool) error {
+	// log.Println("Storing context", context.Id)
+	// log.Println("Num tokens", context.NumTokens)
+
 	contextDir := getPlanContextDir(context.OrgId, context.PlanId)
 
 	err := os.MkdirAll(contextDir, os.ModePerm)
@@ -157,6 +187,19 @@ func StoreContext(context *Context) error {
 	body := []byte(originalBody)
 	context.Body = ""
 
+	originalMapParts := context.MapParts
+	var mapPath string
+	var mapBytes []byte
+	if len(context.MapParts) > 0 {
+		mapFilename := context.Id + ".map-parts"
+		mapPath = filepath.Join(contextDir, mapFilename)
+		mapBytes, err = json.MarshalIndent(context.MapParts, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal map parts: %v", err)
+		}
+		context.MapParts = nil
+	}
+
 	// Convert the ModelContextPart to JSON
 	data, err := json.MarshalIndent(context, "", "  ")
 	if err != nil {
@@ -173,9 +216,91 @@ func StoreContext(context *Context) error {
 		return fmt.Errorf("failed to write context meta to file %s: %v", metaPath, err)
 	}
 
+	if mapPath != "" {
+		if err = os.WriteFile(mapPath, mapBytes, 0644); err != nil {
+			return fmt.Errorf("failed to write context map to file %s: %v", mapPath, err)
+		}
+	}
+
 	context.Body = originalBody
+	context.MapParts = originalMapParts
+
+	if mapPath != "" && !skipMapCache {
+		log.Println("StoreContext - context.MapParts length", len(context.MapParts))
+
+		mapCacheDir := getProjectMapCacheDir(context.OrgId, context.ProjectId)
+
+		// ensure map cache dir exists
+		err = os.MkdirAll(mapCacheDir, os.ModePerm)
+		if err != nil {
+			return fmt.Errorf("error creating map cache dir: %v", err)
+		}
+
+		filePathHash := md5.Sum([]byte(context.FilePath))
+		filePathHashStr := hex.EncodeToString(filePathHash[:])
+
+		mapCachePath := filepath.Join(mapCacheDir, filePathHashStr+".json")
+
+		log.Println("StoreContext - mapCachePath", mapCachePath)
+
+		cachedContext := Context{
+			ContextType: shared.ContextMapType,
+			FilePath:    context.FilePath,
+			Name:        context.Name,
+			Body:        context.Body,
+			NumTokens:   context.NumTokens,
+			MapParts:    context.MapParts,
+			MapShas:     context.MapShas,
+			MapTokens:   context.MapTokens,
+			UpdatedAt:   context.UpdatedAt,
+		}
+
+		cachedContextBytes, err := json.MarshalIndent(cachedContext, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal cached context: %v", err)
+		}
+
+		err = os.WriteFile(mapCachePath, cachedContextBytes, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to write context map to file %s: %v", mapCachePath, err)
+		}
+	}
 
 	return nil
+}
+
+func GetCachedMap(orgId, projectId, filePath string) (*Context, error) {
+	mapCacheDir := getProjectMapCacheDir(orgId, projectId)
+
+	filePathHash := md5.Sum([]byte(filePath))
+	filePathHashStr := hex.EncodeToString(filePathHash[:])
+
+	mapCachePath := filepath.Join(mapCacheDir, filePathHashStr+".json")
+
+	log.Println("GetCachedMap - mapCachePath", mapCachePath)
+
+	mapCacheBytes, err := os.ReadFile(mapCachePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("error reading cached map: %v", err)
+	}
+
+	var context Context
+	err = json.Unmarshal(mapCacheBytes, &context)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling cached map: %v", err)
+	}
+
+	return &context, nil
+}
+
+type CachedMap struct {
+	MapParts  shared.FileMapBodies
+	MapShas   map[string]string
+	MapTokens map[string]int
 }
 
 type LoadContextsParams struct {
@@ -185,9 +310,16 @@ type LoadContextsParams struct {
 	BranchName               string
 	UserId                   string
 	SkipConflictInvalidation bool
+	CachedMapsByPath         map[string]*CachedMap
 }
 
-func LoadContexts(params LoadContextsParams) (*shared.LoadContextResponse, []*Context, error) {
+func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextResponse, []*Context, error) {
+	// startTime := time.Now()
+	// showElapsed := func(msg string) {
+	// 	elapsed := time.Since(startTime)
+	// 	log.Println("LoadContexts", msg, "elapsed: %s\n", elapsed)
+	// }
+
 	req := params.Req
 	orgId := params.OrgId
 	plan := params.Plan
@@ -226,6 +358,29 @@ func LoadContexts(params LoadContextsParams) (*shared.LoadContextResponse, []*Co
 	}
 
 	maxTokens := settings.GetPlannerEffectiveMaxTokens()
+	mapContextsByFilePath := make(map[string]Context)
+
+	existingContexts, err := GetPlanContexts(orgId, planId, false, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting existing contexts: %v", err)
+	}
+	existingContextsByName := make(map[string]bool)
+	for _, context := range existingContexts {
+		composite := strings.Join([]string{context.Name, string(context.ContextType)}, "|")
+		existingContextsByName[composite] = true
+	}
+
+	var filteredReq []*shared.LoadContextParams
+	for _, context := range *req {
+		composite := strings.Join([]string{context.Name, string(context.ContextType)}, "|")
+		if !existingContextsByName[composite] {
+			filteredReq = append(filteredReq, context)
+		}
+	}
+
+	*req = filteredReq
+
+	// showElapsed("Filtered reqs")
 
 	for _, context := range *req {
 		tempId := uuid.New().String()
@@ -233,7 +388,70 @@ func LoadContexts(params LoadContextsParams) (*shared.LoadContextResponse, []*Co
 		var numTokens int
 		var err error
 
-		if context.ContextType == shared.ContextImageType {
+		if context.ContextType == shared.ContextMapType && (len(context.MapInputs) > 0 || params.CachedMapsByPath != nil) {
+			var mappedFiles shared.FileMapBodies
+			if params.CachedMapsByPath != nil && params.CachedMapsByPath[context.FilePath] != nil {
+				log.Println("Using cached map for", context.FilePath)
+				mappedFiles = params.CachedMapsByPath[context.FilePath].MapParts
+			} else {
+				log.Println("Processing map files for", context.FilePath)
+				// showElapsed(context.FilePath + " - processing map files")
+				// Process file maps
+				mappedFiles, err = file_map.ProcessMapFiles(ctx, context.MapInputs)
+				if err != nil {
+					return nil, nil, fmt.Errorf("error processing map files: %v", err)
+				}
+				// showElapsed(context.FilePath + " - processed map files")
+			}
+
+			var mapShas map[string]string
+			var mapTokens map[string]int
+
+			if params.CachedMapsByPath != nil && params.CachedMapsByPath[context.FilePath] != nil {
+				mapShas = params.CachedMapsByPath[context.FilePath].MapShas
+				mapTokens = params.CachedMapsByPath[context.FilePath].MapTokens
+			} else {
+				mapShas = make(map[string]string, len(context.MapInputs))
+				mapTokens = make(map[string]int, len(context.MapInputs))
+
+				for path, input := range context.MapInputs {
+					hash := sha256.Sum256([]byte(input))
+					mapShas[path] = hex.EncodeToString(hash[:])
+					mapBody := mappedFiles[path]
+					mapTokens[path], err = shared.GetNumTokens(mapBody)
+					if err != nil {
+						return nil, nil, fmt.Errorf("error getting num tokens for %s: %v", path, err)
+					}
+				}
+			}
+
+			combinedBody := mappedFiles.CombinedMap()
+
+			numTokens, err = shared.GetNumTokens(combinedBody)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error getting num tokens: %v", err)
+			}
+
+			newContext := Context{
+				// Id generated by db layer
+				OrgId:       orgId,
+				OwnerId:     userId,
+				PlanId:      planId,
+				ProjectId:   plan.ProjectId,
+				ContextType: shared.ContextMapType,
+				Name:        context.Name,
+				Url:         context.Url,
+				FilePath:    context.FilePath,
+				NumTokens:   numTokens,
+				Body:        combinedBody,
+				MapParts:    mappedFiles,
+				MapShas:     mapShas,
+				MapTokens:   mapTokens,
+			}
+
+			mapContextsByFilePath[context.FilePath] = newContext
+
+		} else if context.ContextType == shared.ContextImageType {
 			numTokens, err = shared.GetImageTokens(context.Body, context.ImageDetail)
 		} else {
 			numTokens, err = shared.GetNumTokens(context.Body)
@@ -250,6 +468,8 @@ func LoadContexts(params LoadContextsParams) (*shared.LoadContextResponse, []*Co
 		totalTokens += numTokens
 	}
 
+	// showElapsed("Loaded reqs")
+
 	if totalTokens > maxTokens {
 		return &shared.LoadContextResponse{
 			TokensAdded:       tokensAdded,
@@ -261,29 +481,38 @@ func LoadContexts(params LoadContextsParams) (*shared.LoadContextResponse, []*Co
 
 	dbContextsCh := make(chan *Context)
 	errCh := make(chan error)
-	for tempId, params := range paramsByTempId {
+	for tempId, loadParams := range paramsByTempId {
 
-		go func(tempId string, params *shared.LoadContextParams) {
-			hash := sha256.Sum256([]byte(params.Body))
+		go func(tempId string, loadParams *shared.LoadContextParams) {
+			hash := sha256.Sum256([]byte(loadParams.Body))
 			sha := hex.EncodeToString(hash[:])
 
-			context := Context{
-				// Id generated by db layer
-				OrgId:           orgId,
-				OwnerId:         userId,
-				PlanId:          planId,
-				ContextType:     params.ContextType,
-				Name:            params.Name,
-				Url:             params.Url,
-				FilePath:        params.FilePath,
-				NumTokens:       numTokensByTempId[tempId],
-				Sha:             sha,
-				Body:            params.Body,
-				ForceSkipIgnore: params.ForceSkipIgnore,
-				ImageDetail:     params.ImageDetail,
+			var context Context
+			if mapContext, ok := mapContextsByFilePath[loadParams.FilePath]; ok {
+				context = mapContext
+			} else {
+				// log.Println("tempId", tempId, "params.FilePath", params.FilePath, "sha", sha)
+				// log.Println("params.Body", params.Body)
+
+				context = Context{
+					// Id generated by db layer
+					OrgId:           orgId,
+					OwnerId:         userId,
+					PlanId:          planId,
+					ProjectId:       plan.ProjectId,
+					ContextType:     loadParams.ContextType,
+					Name:            loadParams.Name,
+					Url:             loadParams.Url,
+					FilePath:        loadParams.FilePath,
+					NumTokens:       numTokensByTempId[tempId],
+					Sha:             sha,
+					Body:            loadParams.Body,
+					ForceSkipIgnore: loadParams.ForceSkipIgnore,
+					ImageDetail:     loadParams.ImageDetail,
+				}
 			}
 
-			err := StoreContext(&context)
+			err := StoreContext(&context, params.CachedMapsByPath != nil)
 
 			if err != nil {
 				errCh <- err
@@ -292,7 +521,7 @@ func LoadContexts(params LoadContextsParams) (*shared.LoadContextResponse, []*Co
 
 			dbContextsCh <- &context
 
-		}(tempId, params)
+		}(tempId, loadParams)
 	}
 
 	var dbContexts []*Context
@@ -371,14 +600,42 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 		contextsById = params.ContextsById
 	}
 
+	var totalContextCount int
+	var totalBodySize int64
+
+	for _, context := range contextsById {
+		totalContextCount++
+		totalBodySize += int64(len(context.Body))
+	}
+
+	for id, params := range *req {
+		if context, ok := contextsById[id]; ok {
+			totalBodySize += int64(len(params.Body)) - int64(len(context.Body))
+		} else {
+			totalContextCount++
+			totalBodySize += int64(len(params.Body))
+		}
+	}
+
+	if totalContextCount > shared.MaxContextCount {
+		return nil, fmt.Errorf("too many contexts to update (found %d, limit is %d)", totalContextCount, shared.MaxContextCount)
+	}
+
+	if totalBodySize > shared.MaxContextBodySize {
+		return nil, fmt.Errorf("total context body size exceeds limit (size %.2f MB, limit %d MB)", float64(totalBodySize)/1024/1024, int(shared.MaxContextBodySize)/1024/1024)
+	}
+
 	var updatedContexts []*shared.Context
 
 	numFiles := 0
 	numUrls := 0
 	numTrees := 0
+	numMaps := 0
 
 	var mu sync.Mutex
 	errCh := make(chan error)
+
+	log.Printf("updating %d outdated contexts\n", len(*req))
 
 	for id, params := range *req {
 		go func(id string, params *shared.UpdateContextParams) {
@@ -388,12 +645,14 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 				context = contextsById[id]
 			} else {
 				var err error
-				context, err = GetContext(orgId, planId, id, true)
+				context, err = GetContext(orgId, planId, id, true, true)
 
 				if err != nil {
 					errCh <- fmt.Errorf("error getting context: %v", err)
 					return
 				}
+
+				// log.Println("Got context", context.Id, "numTokens", context.NumTokens)
 			}
 
 			mu.Lock()
@@ -402,26 +661,31 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 			contextsById[id] = context
 			updatedContexts = append(updatedContexts, context.ToApi())
 
-			var updateNumTokens int
-			var err error
+			if context.ContextType != shared.ContextMapType {
+				var updateNumTokens int
+				var err error
 
-			if context.ContextType == shared.ContextImageType {
-				updateNumTokens, err = shared.GetImageTokens(params.Body, context.ImageDetail)
-			} else {
-				updateNumTokens, err = shared.GetNumTokens(params.Body)
+				if context.ContextType == shared.ContextImageType {
+					updateNumTokens, err = shared.GetImageTokens(params.Body, context.ImageDetail)
+				} else {
+					updateNumTokens, err = shared.GetNumTokens(params.Body)
+
+					// log.Println("len(params.Body)", len(params.Body))
+				}
+
+				// log.Println("Updating context", id, "updateNumTokens", updateNumTokens)
+
+				if err != nil {
+					errCh <- fmt.Errorf("error getting num tokens: %v", err)
+					return
+				}
+
+				tokenDiff := updateNumTokens - context.NumTokens
+				tokenDiffsById[id] = tokenDiff
+				tokensDiff += tokenDiff
+				totalTokens += tokenDiff
+				context.NumTokens = updateNumTokens
 			}
-
-			if err != nil {
-				errCh <- fmt.Errorf("error getting num tokens: %v", err)
-				return
-			}
-
-			tokenDiff := updateNumTokens - context.NumTokens
-			tokenDiffsById[id] = tokenDiff
-			tokensDiff += tokenDiff
-			totalTokens += tokenDiff
-
-			context.NumTokens = updateNumTokens
 
 			switch context.ContextType {
 			case shared.ContextFileType:
@@ -430,6 +694,8 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 				numUrls++
 			case shared.ContextDirectoryTreeType:
 				numTrees++
+			case shared.ContextMapType:
+				numMaps++
 			}
 
 			errCh <- nil
@@ -451,6 +717,7 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 		NumFiles:        numFiles,
 		NumUrls:         numUrls,
 		NumTrees:        numTrees,
+		NumMaps:         numMaps,
 		MaxTokens:       maxTokens,
 	}
 
@@ -481,20 +748,75 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 
 	for id, params := range *req {
 		go func(id string, params *shared.UpdateContextParams) {
-
 			context := contextsById[id]
 
-			hash := sha256.Sum256([]byte(params.Body))
-			sha := hex.EncodeToString(hash[:])
+			if context.ContextType == shared.ContextMapType {
+				oldNumTokens := context.NumTokens
 
-			context.Body = params.Body
-			context.Sha = sha
+				// log.Println("Updating map context", id, "oldNumTokens", oldNumTokens)
 
-			err := StoreContext(context)
+				for path, part := range params.MapBodies {
+					context.MapParts[path] = part
+					context.MapShas[path] = params.InputShas[path]
+
+					numTokens, err := shared.GetNumTokens(part)
+					if err != nil {
+						errCh <- fmt.Errorf("error getting num tokens for %s: %v", path, err)
+						return
+					}
+					context.MapTokens[path] = numTokens
+				}
+
+				for _, path := range params.RemovedMapPaths {
+					delete(context.MapParts, path)
+					delete(context.MapShas, path)
+					delete(context.MapTokens, path)
+				}
+
+				context.Body = context.MapParts.CombinedMap()
+				newNumTokens, err := shared.GetNumTokens(context.Body)
+				if err != nil {
+					errCh <- fmt.Errorf("error getting num tokens for %s: %v", context.Id, err)
+					return
+				}
+
+				// log.Println("Updated map context", id, "newNumTokens", newNumTokens)
+
+				tokenDiff := newNumTokens - oldNumTokens
+
+				// log.Println("Updated map context", id, "tokenDiff", tokenDiff)
+
+				tokenDiffsById[id] = tokenDiff
+				tokensDiff += tokenDiff
+
+				// log.Println("Updated map context", id, "tokensDiff", tokensDiff)
+
+				totalTokens += tokenDiff
+
+				// log.Println("Updated map context", id, "totalTokens", totalTokens)
+
+				context.NumTokens = newNumTokens
+			} else {
+				context.Body = params.Body
+				hash := sha256.Sum256([]byte(context.Body))
+				context.Sha = hex.EncodeToString(hash[:])
+			}
+
+			// log.Println("storing context", id)
+			// log.Printf("context name: %s, sha: %s\n", context.Name, context.Sha)
+
+			err := StoreContext(context, false)
 
 			if err != nil {
 				errCh <- fmt.Errorf("error storing context: %v", err)
 				return
+			}
+
+			// log.Println("stored context", id)
+			// log.Println()
+
+			if context.ContextType == shared.ContextMapType {
+
 			}
 
 			errCh <- nil

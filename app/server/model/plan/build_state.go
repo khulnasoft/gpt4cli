@@ -6,14 +6,16 @@ import (
 
 	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
+	sitter "github.com/smacker/go-tree-sitter"
 )
 
-const MaxBuildStreamErrorRetries = 3 // uses semi-exponential backoff so be careful with this
+const MaxBuildErrorRetries = 3 // uses semi-exponential backoff so be careful with this
 
 const FixSyntaxRetries = 2
 const FixSyntaxEpochs = 2
 
 type activeBuildStreamState struct {
+	tellState     *activeTellStreamState
 	clients       map[string]*openai.Client
 	auth          *types.ServerAuth
 	currentOrgId  string
@@ -27,15 +29,21 @@ type activeBuildStreamState struct {
 
 type activeBuildStreamFileState struct {
 	*activeBuildStreamState
-	filePath           string
-	convoMessageId     string
-	build              *db.PlanBuild
-	currentPlanState   *shared.CurrentPlanState
-	activeBuild        *types.ActiveBuild
-	preBuildState      string
-	lineNumsNumRetry   int
-	verifyFileNumRetry int
-	fixFileNumRetry    int
+	filePath                   string
+	convoMessageId             string
+	build                      *db.PlanBuild
+	currentPlanState           *shared.CurrentPlanState
+	activeBuild                *types.ActiveBuild
+	preBuildState              string
+	parser                     *sitter.Parser
+	language                   shared.TreeSitterLanguage
+	preBuildStateSyntaxInvalid bool
+
+	structuredEditNumRetry int
+	expandRefsNumRetry     int
+	lineNumsNumRetry       int
+	verifyFileNumRetry     int
+	fixFileNumRetry        int
 
 	syntaxNumRetry int
 	syntaxNumEpoch int
@@ -50,4 +58,6 @@ type activeBuildStreamFileState struct {
 	syntaxErrors       []string
 
 	isNewFile bool
+
+	inputTokens int
 }
