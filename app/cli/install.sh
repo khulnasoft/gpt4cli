@@ -188,7 +188,7 @@ echo "⚡️ Run 'gpt4cli' or 'g4c' in any project directory and start building!
 echo ""
 echo "$(printf '%*s' "$(tput cols)" '' | tr ' ' -)"
 echo ""
-echo "📚 Need help? 👉 https://docs.khulnasoft.com"
+echo "📚 Need help? 👉 https://gpt4cli.khulnasoft.com"
 echo ""
 echo "👋 Join a community of AI builders 👉 https://discord.gg/khulnasoft"
 echo ""
