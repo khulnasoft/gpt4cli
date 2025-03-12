@@ -1,7 +1,8 @@
 package types
 
 import (
-	"github.com/khulnasoft/gpt4cli/shared"
+	"context"
+	shared "gpt4cli-shared"
 )
 
 type OnStreamPlanParams struct {
@@ -60,13 +61,14 @@ type ApiClient interface {
 	DeletePlan(planId string) *shared.ApiError
 	DeleteAllPlans(projectId string) *shared.ApiError
 	ConnectPlan(planId, branch string, onStreamPlan OnStreamPlan) *shared.ApiError
-	StopPlan(planId, branch string) *shared.ApiError
+	StopPlan(ctx context.Context, planId, branch string) *shared.ApiError
 
 	ArchivePlan(planId string) *shared.ApiError
 	UnarchivePlan(planId string) *shared.ApiError
 	RenamePlan(planId string, name string) *shared.ApiError
 
 	GetCurrentPlanState(planId, branch string) (*shared.CurrentPlanState, *shared.ApiError)
+	GetCurrentPlanStateAtSha(planId, sha string) (*shared.CurrentPlanState, *shared.ApiError)
 	ApplyPlan(planId, branch string, req shared.ApplyPlanRequest) (string, *shared.ApiError)
 	RejectAllChanges(planId, branch string) *shared.ApiError
 	RejectFile(planId, branch, filePath string) *shared.ApiError
@@ -110,5 +112,6 @@ type ApiClient interface {
 	GetCreditsTransactions(pageSize, pageNum int) (*shared.CreditsLogResponse, *shared.ApiError)
 	GetFileMap(req shared.GetFileMapRequest) (*shared.GetFileMapResponse, *shared.ApiError)
 	GetContextBody(planId, branch, contextId string) (*shared.GetContextBodyResponse, *shared.ApiError)
-	AutoLoadContext(planId, branch string, req shared.LoadContextRequest) (*shared.LoadContextResponse, *shared.ApiError)
+	AutoLoadContext(ctx context.Context, planId, branch string, req shared.LoadContextRequest) (*shared.LoadContextResponse, *shared.ApiError)
+	GetBuildStatus(planId, branch string) (*shared.GetBuildStatusResponse, *shared.ApiError)
 }

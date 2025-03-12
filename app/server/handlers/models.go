@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"gpt4cli-server/db"
 
+	shared "gpt4cli-shared"
+
 	"github.com/gorilla/mux"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func CreateCustomModelHandler(w http.ResponseWriter, r *http.Request) {
@@ -24,22 +26,26 @@ func CreateCustomModelHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	if os.Getenv("IS_CLOUD") != "" && model.Provider == shared.ModelProviderCustom {
+		http.Error(w, "Custom model providers are not supported on Gpt4cli Cloud", http.StatusBadRequest)
+		return
+	}
+
 	dbModel := &db.AvailableModel{
-		Id:                          model.Id,
-		OrgId:                       auth.OrgId,
-		Provider:                    model.Provider,
-		CustomProvider:              model.CustomProvider,
-		BaseUrl:                     model.BaseUrl,
-		ModelName:                   model.ModelName,
-		MaxTokens:                   model.MaxTokens,
-		ApiKeyEnvVar:                model.ApiKeyEnvVar,
-		IsOpenAICompatible:          model.IsOpenAICompatible,
-		HasJsonResponseMode:         model.HasJsonResponseMode,
-		HasStreaming:                model.HasStreaming,
-		HasFunctionCalling:          model.HasFunctionCalling,
-		HasStreamingFunctionCalls:   model.HasStreamingFunctionCalls,
-		DefaultMaxConvoTokens:       model.DefaultMaxConvoTokens,
-		DefaultReservedOutputTokens: model.DefaultReservedOutputTokens,
+		Id:                    model.Id,
+		OrgId:                 auth.OrgId,
+		Provider:              model.Provider,
+		CustomProvider:        model.CustomProvider,
+		BaseUrl:               model.BaseUrl,
+		ModelName:             model.ModelName,
+		Description:           model.Description,
+		MaxTokens:             model.MaxTokens,
+		ApiKeyEnvVar:          model.ApiKeyEnvVar,
+		HasImageSupport:       model.HasImageSupport,
+		DefaultMaxConvoTokens: model.DefaultMaxConvoTokens,
+		MaxOutputTokens:       model.MaxOutputTokens,
+		ReservedOutputTokens:  model.ReservedOutputTokens,
 	}
 
 	if err := db.CreateCustomModel(dbModel); err != nil {
@@ -111,12 +117,13 @@ func CreateModelPackHandler(w http.ResponseWriter, r *http.Request) {
 		OrgId:       auth.OrgId,
 		Name:        ms.Name,
 		Description: ms.Description,
-		Planner:     ms.Planner,
 		PlanSummary: ms.PlanSummary,
 		Builder:     ms.Builder,
 		Namer:       ms.Namer,
 		CommitMsg:   ms.CommitMsg,
 		ExecStatus:  ms.ExecStatus,
+		Architect:   ms.Architect,
+		Coder:       ms.Coder,
 	}
 
 	if err := db.CreateModelPack(dbMs); err != nil {

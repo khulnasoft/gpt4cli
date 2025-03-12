@@ -6,9 +6,10 @@ import (
 	"log"
 	"strings"
 
+	shared "gpt4cli-shared"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const orgFields = "id, name, domain, auto_add_domain_users, owner_id, is_trial, created_at, updated_at"

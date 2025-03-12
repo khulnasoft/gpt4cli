@@ -8,7 +8,7 @@ g4c-7: 	"gpt4cli/auth"
 g4c-8: 	"gpt4cli/lib"
 g4c-9: 	"gpt4cli/term"
 g4c-10: 
-g4c-11: 	"github.com/khulnasoft/gpt4cli/shared"
+g4c-11: 	"gpt4cli-shared"
 g4c-12: 	"github.com/spf13/cobra"
 g4c-13: )
 g4c-14: 

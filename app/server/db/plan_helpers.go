@@ -1,92 +1,92 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
+
+	shared "gpt4cli-shared"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/sashabaranov/go-openai"
 )
 
-func CreatePlan(orgId, projectId, userId, name string) (*Plan, error) {
-	// start a transaction
-	tx, err := Conn.Beginx()
-	if err != nil {
-		return nil, fmt.Errorf("error starting transaction: %v", err)
-	}
+func CreatePlan(ctx context.Context, orgId, projectId, userId, name string) (*Plan, error) {
+	var plan *Plan
+	err := WithTx(ctx, "create plan", func(tx *sqlx.Tx) error {
 
-	// Ensure that rollback is attempted in case of failure
-	defer func() {
+		planConfig, err := GetDefaultPlanConfig(userId)
+
 		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				log.Printf("transaction rollback error: %v\n", rbErr)
-			} else {
-				log.Println("transaction rolled back")
-			}
+			return fmt.Errorf("error getting default plan config: %v", err)
 		}
-	}()
 
-	planConfig, err := GetDefaultPlanConfig(userId)
-
-	if err != nil {
-		return nil, fmt.Errorf("error getting default plan config: %v", err)
-	}
-
-	query := `INSERT INTO plans (org_id, owner_id, project_id, name, plan_config) 
+		query := `INSERT INTO plans (org_id, owner_id, project_id, name, plan_config) 
 	VALUES ($1, $2, $3, $4, $5)
 	RETURNING id, created_at, updated_at`
 
-	plan := &Plan{
-		OrgId:      orgId,
-		OwnerId:    userId,
-		ProjectId:  projectId,
-		Name:       name,
-		PlanConfig: planConfig,
-	}
+		plan = &Plan{
+			OrgId:      orgId,
+			OwnerId:    userId,
+			ProjectId:  projectId,
+			Name:       name,
+			PlanConfig: planConfig,
+		}
 
-	err = tx.QueryRow(
-		query,
-		orgId,
-		userId,
-		projectId,
-		name,
-		planConfig,
-	).Scan(
-		&plan.Id,
-		&plan.CreatedAt,
-		&plan.UpdatedAt,
-	)
+		err = tx.QueryRow(
+			query,
+			orgId,
+			userId,
+			projectId,
+			name,
+			planConfig,
+		).Scan(
+			&plan.Id,
+			&plan.CreatedAt,
+			&plan.UpdatedAt,
+		)
+
+		if err != nil {
+			return fmt.Errorf("error creating plan: %v", err)
+		}
+
+		_, err = tx.Exec("INSERT INTO lockable_plan_ids (plan_id) VALUES ($1)", plan.Id)
+
+		if err != nil {
+			return fmt.Errorf("error inserting lockable plan id: %v", err)
+		}
+
+		// the one place where we do this to skip the locking queue
+		// ok to cheat this once since we're creating a new plan
+		repo := getGitRepo(orgId, plan.Id)
+		_, err = CreateBranch(repo, plan, nil, "main", tx)
+
+		if err != nil {
+			return fmt.Errorf("error creating main branch: %v", err)
+		}
+
+		log.Println("Created branch main")
+
+		err = InitPlan(orgId, plan.Id)
+
+		if err != nil {
+			return fmt.Errorf("error initializing plan dir: %v", err)
+		}
+
+		log.Println("Initialized plan dir")
+
+		return nil
+	})
 
 	if err != nil {
-		return nil, fmt.Errorf("error creating plan: %v", err)
-	}
-
-	_, err = CreateBranch(plan, nil, "main", tx)
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating main branch: %v", err)
-	}
-
-	log.Println("Created branch main")
-
-	err = InitPlan(orgId, plan.Id)
-
-	if err != nil {
-		return nil, fmt.Errorf("error initializing plan dir: %v", err)
-	}
-
-	log.Println("Initialized plan dir")
-
-	// commit the transaction
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("error committing transaction: %v", err)
+		return nil, err
 	}
 
 	return plan, nil
@@ -266,6 +266,17 @@ func StoreDescription(description *ConvoMessageDescription) error {
 
 	if err != nil {
 		return fmt.Errorf("error creating convo message descriptions dir: %v", err)
+	}
+
+	for _, op := range description.Operations {
+		if op.Content != "" {
+			quoted := strconv.Quote(op.Content)
+			op.Content = quoted[1 : len(quoted)-1]
+		}
+		if op.Description != "" {
+			quoted := strconv.Quote(op.Description)
+			op.Description = quoted[1 : len(quoted)-1]
+		}
 	}
 
 	now := time.Now()

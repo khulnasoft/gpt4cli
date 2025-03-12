@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"
@@ -86,7 +89,7 @@ func GetConvoMessage(orgId, planId, messageId string) (*ConvoMessage, error) {
 	return &convoMessage, nil
 }
 
-func StoreConvoMessage(message *ConvoMessage, currentUserId, branch string, commit bool) (string, error) {
+func StoreConvoMessage(repo *GitRepo, message *ConvoMessage, currentUserId, branch string, commit bool) (string, error) {
 	convoDir := getPlanConversationDir(message.OrgId, message.PlanId)
 
 	ts := time.Now().UTC()
@@ -132,10 +135,53 @@ func StoreConvoMessage(message *ConvoMessage, currentUserId, branch string, comm
 		}
 	}
 
-	msg := fmt.Sprintf("Message #%d | %s | %d 🪙", message.Num, desc, message.Tokens)
+	replyTags := message.Flags.GetReplyTags()
+
+	var msg string
+	if len(replyTags) > 0 {
+		msg = fmt.Sprintf("Message #%d | %s | %s | %d 🪙", message.Num, desc, strings.Join(replyTags, " | "), message.Tokens)
+	} else {
+		msg = fmt.Sprintf("Message #%d | %s | %d 🪙", message.Num, desc, message.Tokens)
+	}
+
+	if len(message.AddedSubtasks) > 0 {
+		msg += "\n\n"
+		for _, subtask := range message.AddedSubtasks {
+			msg += "\n• " + subtask.Title
+		}
+	}
+
+	if len(message.RemovedSubtasks) > 0 {
+		msg += "\n\n"
+		msg += "Removed Tasks"
+		for _, subtask := range message.RemovedSubtasks {
+			msg += "\n• " + subtask
+		}
+	}
+
+	if message.Flags.CurrentStage.TellStage == shared.TellStageImplementation && message.Subtask != nil {
+		msg += "\n\n" + "📋 " + message.Subtask.Title
+		if len(message.Subtask.UsesFiles) > 0 {
+			for _, file := range message.Subtask.UsesFiles {
+				msg += "\n • 📄 " + file
+			}
+		}
+	}
+
+	if message.Flags.DidCompletePlan {
+		msg += "\n\n" + "🏁 Completed Plan"
+	}
+
+	// Cleaner without the cut off message - maybe need a separate command to show both the log and full messages?
+	// cutoff := 140
+	// if len(message.Message) > cutoff {
+	// 	msg += "\n\n" + message.Message[:cutoff] + "..."
+	// } else {
+	// 	msg += "\n\n" + message.Message
+	// }
 
 	if commit {
-		err = GitAddAndCommit(message.OrgId, message.PlanId, branch, msg)
+		err = repo.GitAddAndCommit(branch, msg)
 		if err != nil {
 			return "", fmt.Errorf("error committing convo message: %v", err)
 		}

@@ -6,22 +6,19 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/plan_exec"
-	"gpt4cli/term"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/plan_exec"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 	"strings"
-	"time"
 
-	"context"
+	shared "gpt4cli-shared"
 
-	"os/signal"
-	"syscall"
-
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
+
+var isImplementationOfChat bool
 
 // tellCmd represents the prompt command
 var tellCmd = &cobra.Command{
@@ -37,6 +34,8 @@ func init() {
 	RootCmd.AddCommand(tellCmd)
 
 	initExecFlags(tellCmd, initExecFlagsParams{})
+
+	tellCmd.Flags().BoolVar(&isImplementationOfChat, "from-chat", false, "Begin implementation based on conversation so far")
 }
 
 func doTell(cmd *cobra.Command, args []string) {
@@ -49,30 +48,43 @@ func doTell(cmd *cobra.Command, args []string) {
 		apiKeys = lib.MustVerifyApiKeys()
 	}
 
-	prompt := getTellPrompt(args)
+	if isImplementationOfChat && len(args) > 0 {
+		term.OutputErrorAndExit("Error: --from-chat cannot be used with a prompt")
+	}
 
-	if prompt == "" {
-		fmt.Println("🤷‍♂️ No prompt to send")
-		return
+	var prompt string
+	if !isImplementationOfChat {
+		prompt = getTellPrompt(args)
+
+		if prompt == "" {
+			fmt.Println("🤷‍♂️ No prompt to send")
+			return
+		}
+	}
+
+	tellFlags := types.TellFlags{
+		TellBg:                 tellBg,
+		TellStop:               tellStop,
+		TellNoBuild:            tellNoBuild,
+		AutoContext:            tellAutoContext,
+		SmartContext:           tellSmartContext,
+		ExecEnabled:            !noExec,
+		AutoApply:              tellAutoApply,
+		IsImplementationOfChat: isImplementationOfChat,
 	}
 
 	plan_exec.TellPlan(plan_exec.ExecParams{
 		CurrentPlanId: lib.CurrentPlanId,
 		CurrentBranch: lib.CurrentBranch,
 		ApiKeys:       apiKeys,
-		CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
-			return lib.CheckOutdatedContextWithOutput(false, autoConfirm || tellAutoApply || tellAutoContext, maybeContexts)
+		CheckOutdatedContext: func(maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (bool, bool, error) {
+			auto := autoConfirm || tellAutoApply || tellAutoContext
+			return lib.CheckOutdatedContextWithOutput(auto, auto, maybeContexts, projectPaths)
 		},
-	}, prompt, plan_exec.TellFlags{
-		TellBg:      tellBg,
-		TellStop:    tellStop,
-		TellNoBuild: tellNoBuild,
-		AutoContext: tellAutoContext,
-		ExecEnabled: !noExec,
-	})
+	}, prompt, tellFlags)
 
 	if tellAutoApply {
-		flags := lib.ApplyFlags{
+		applyFlags := types.ApplyFlags{
 			AutoConfirm: true,
 			AutoCommit:  autoCommit,
 			NoCommit:    !autoCommit,
@@ -81,12 +93,13 @@ func doTell(cmd *cobra.Command, args []string) {
 			AutoDebug:   autoDebug,
 		}
 
-		lib.MustApplyPlan(
-			lib.CurrentPlanId,
-			lib.CurrentBranch,
-			flags,
-			plan_exec.GetOnApplyExecFail(flags),
-		)
+		lib.MustApplyPlan(lib.ApplyPlanParams{
+			PlanId:     lib.CurrentPlanId,
+			Branch:     lib.CurrentBranch,
+			ApplyFlags: applyFlags,
+			TellFlags:  tellFlags,
+			OnExecFail: plan_exec.GetOnApplyExecFail(applyFlags, tellFlags),
+		})
 	}
 }
 
@@ -196,50 +209,50 @@ func getEditorPrompt() string {
 
 }
 
-func maybeShowDiffs() {
-	diffs, err := api.Client.GetPlanDiffs(lib.CurrentPlanId, lib.CurrentBranch, plainTextOutput || showDiffUi)
-	if err != nil {
-		term.OutputErrorAndExit("Error getting plan diffs: %v", err)
-		return
-	}
+// func maybeShowDiffs() {
+// 	diffs, err := api.Client.GetPlanDiffs(lib.CurrentPlanId, lib.CurrentBranch, plainTextOutput || showDiffUi)
+// 	if err != nil {
+// 		term.OutputErrorAndExit("Error getting plan diffs: %v", err)
+// 		return
+// 	}
 
-	if len(diffs) > 0 {
-		cmd := exec.Command(os.Args[0], "diffs", "--ui")
+// 	if len(diffs) > 0 {
+// 		cmd := exec.Command(os.Args[0], "diffs", "--ui")
 
-		// Create a context that's cancelled when the program exits
-		ctx, cancel := context.WithCancel(context.Background())
+// 		// Create a context that's cancelled when the program exits
+// 		ctx, cancel := context.WithCancel(context.Background())
 
-		// Ensure cleanup on program exit
-		go func() {
-			// Wait for program exit signal
-			c := make(chan os.Signal, 1)
-			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-			<-c
+// 		// Ensure cleanup on program exit
+// 		go func() {
+// 			// Wait for program exit signal
+// 			c := make(chan os.Signal, 1)
+// 			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+// 			<-c
 
-			// Cancel context and kill the process
-			cancel()
-			if cmd.Process != nil {
-				cmd.Process.Kill()
-			}
-		}()
+// 			// Cancel context and kill the process
+// 			cancel()
+// 			if cmd.Process != nil {
+// 				cmd.Process.Kill()
+// 			}
+// 		}()
 
-		go func() {
-			if err := cmd.Start(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error starting diffs command: %v\n", err)
-				return
-			}
+// 		go func() {
+// 			if err := cmd.Start(); err != nil {
+// 				fmt.Fprintf(os.Stderr, "Error starting diffs command: %v\n", err)
+// 				return
+// 			}
 
-			// Wait in a separate goroutine
-			go cmd.Wait()
+// 			// Wait in a separate goroutine
+// 			go cmd.Wait()
 
-			// Wait for either context cancellation or process completion
-			<-ctx.Done()
-			if cmd.Process != nil {
-				cmd.Process.Kill()
-			}
-		}()
+// 			// Wait for either context cancellation or process completion
+// 			<-ctx.Done()
+// 			if cmd.Process != nil {
+// 				cmd.Process.Kill()
+// 			}
+// 		}()
 
-		// Give the UI a moment to start
-		time.Sleep(100 * time.Millisecond)
-	}
-}
+// 		// Give the UI a moment to start
+// 		time.Sleep(100 * time.Millisecond)
+// 	}
+// }

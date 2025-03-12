@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"gpt4cli/auth"
-	"gpt4cli/term"
-	"gpt4cli/ui"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/ui"
 
 	"github.com/spf13/cobra"
 )

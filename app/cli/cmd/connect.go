@@ -3,12 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/stream"
-	streamtui "gpt4cli/stream_tui"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/stream"
+	streamtui "gpt4cli-cli/stream_tui"
+	"gpt4cli-cli/term"
 
 	"github.com/spf13/cobra"
 )

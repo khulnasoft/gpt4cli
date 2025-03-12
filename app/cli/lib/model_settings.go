@@ -3,11 +3,12 @@ package lib
 import (
 	"fmt"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/term"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const GoBack = "← Go back"

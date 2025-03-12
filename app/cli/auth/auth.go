@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"gpt4cli/fs"
-	"gpt4cli/term"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/term"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 var openUnauthenticatedCloudURL func(msg, path string)
@@ -64,7 +64,7 @@ func MustResolveAuth(requireOrg bool) {
 			term.OutputErrorAndExit("Error listing orgs: %v", apiErr.Msg)
 		}
 
-		org, err := resolveOrgAuth(orgs)
+		org, err := resolveOrgAuth(orgs, Current.IsLocalMode)
 
 		if err != nil {
 			term.OutputErrorAndExit("Error resolving org: %v", err)
@@ -91,15 +91,14 @@ func RefreshInvalidToken() error {
 	if Current == nil {
 		return fmt.Errorf("error refreshing token: auth not loaded")
 	}
-
-	hasAccount, pin, err := verifyEmail(Current.Email, Current.Host)
+	res, err := verifyEmail(Current.Email, Current.Host)
 
 	if err != nil {
 		return fmt.Errorf("error verifying email: %v", err)
 	}
 
-	if hasAccount {
-		return signIn(Current.Email, pin, Current.Host)
+	if res.hasAccount {
+		return signIn(Current.Email, res.pin, Current.Host)
 	} else {
 		host := Current.Host
 		if host == "" {

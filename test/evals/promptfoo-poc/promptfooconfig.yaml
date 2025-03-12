@@ -1,9 +1,0 @@
-description: "promptfoo-poc"
-
-prompts:
-  - file://promptfoo-poc.prompt.txt
-
-providers:
-  - file://promptfoo-poc.provider.yml
-
-tests: tests/*.tests.yml

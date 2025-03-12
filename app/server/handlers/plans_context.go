@@ -3,13 +3,15 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"gpt4cli-server/db"
 
+	shared "gpt4cli-shared"
+
 	"github.com/gorilla/mux"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func ListContextHandler(w http.ResponseWriter, r *http.Request) {
@@ -22,24 +24,35 @@ func ListContextHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	planId := vars["planId"]
-	log.Println("planId: ", planId)
+	branch := vars["branch"]
+	log.Println("planId: ", planId, "branch: ", branch)
 
 	if authorizePlan(w, planId, auth) == nil {
 		return
 	}
 
-	var err error
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
+	var dbContexts []*db.Context
 
-	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, false, false)
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   planId,
+		Branch:   branch,
+		Reason:   "list contexts",
+		Scope:    db.LockScopeRead,
+		Ctx:      ctx,
+		CancelFn: cancel,
+	}, func(repo *db.GitRepo) error {
+		res, err := db.GetPlanContexts(auth.OrgId, planId, false, false)
+		if err != nil {
+			return err
+		}
+
+		dbContexts = res
+
+		return nil
+	})
 
 	if err != nil {
 		log.Printf("Error getting contexts: %v\n", err)
@@ -74,25 +87,37 @@ func GetContextBodyHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	planId := vars["planId"]
+	branch := vars["branch"]
 	contextId := vars["contextId"]
-	log.Println("planId:", planId, "contextId:", contextId)
+	log.Println("planId:", planId, "branch:", branch, "contextId:", contextId)
 
 	if authorizePlan(w, planId, auth) == nil {
 		return
 	}
 
-	var err error
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
 
-	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, true, false)
+	var dbContexts []*db.Context
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   planId,
+		Branch:   branch,
+		Reason:   "get context body",
+		Scope:    db.LockScopeRead,
+		Ctx:      ctx,
+		CancelFn: cancel,
+	}, func(repo *db.GitRepo) error {
+		res, err := db.GetPlanContexts(auth.OrgId, planId, true, false)
+		if err != nil {
+			return err
+		}
+
+		dbContexts = res
+
+		return nil
+	})
+
 	if err != nil {
 		log.Printf("Error getting contexts: %v\n", err)
 		http.Error(w, "Error getting contexts: "+err.Error(), http.StatusInternalServerError)
@@ -160,7 +185,14 @@ func LoadContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, _ := loadContexts(w, r, auth, &requestBody, plan, branchName, nil)
+	res, _ := loadContexts(loadContextsParams{
+		w:          w,
+		r:          r,
+		auth:       auth,
+		loadReq:    &requestBody,
+		plan:       plan,
+		branchName: branchName,
+	})
 
 	if res == nil {
 		return
@@ -213,21 +245,43 @@ func UpdateContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
 
-	updateRes, err := db.UpdateContexts(db.UpdateContextsParams{
-		Req:        &requestBody,
-		OrgId:      auth.OrgId,
-		Plan:       plan,
-		BranchName: branchName,
+	var updateRes *shared.UpdateContextResponse
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:          auth.OrgId,
+		UserId:         auth.User.Id,
+		PlanId:         planId,
+		Branch:         branchName,
+		Reason:         "update contexts",
+		Scope:          db.LockScopeWrite,
+		Ctx:            ctx,
+		CancelFn:       cancel,
+		ClearRepoOnErr: true,
+	}, func(repo *db.GitRepo) error {
+		var err error
+		updateRes, err = db.UpdateContexts(db.UpdateContextsParams{
+			Req:        &requestBody,
+			OrgId:      auth.OrgId,
+			Plan:       plan,
+			BranchName: branchName,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		if updateRes.MaxTokensExceeded {
+			return nil
+		}
+
+		err = repo.GitAddAndCommit(branchName, updateRes.Msg)
+
+		if err != nil {
+			return fmt.Errorf("error committing changes: %v", err)
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -247,14 +301,6 @@ func UpdateContextHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Write(bytes)
-		return
-	}
-
-	err = db.GitAddAndCommit(auth.OrgId, planId, branchName, updateRes.Msg)
-
-	if err != nil {
-		log.Printf("Error committing changes: %v\n", err)
-		http.Error(w, "Error committing changes: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -314,52 +360,63 @@ func DeleteContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
 
-	dbContexts, err := db.GetPlanContexts(auth.OrgId, planId, false, false)
-
-	if err != nil {
-		log.Printf("Error getting contexts: %v\n", err)
-		http.Error(w, "Error getting contexts: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	var dbContexts []*db.Context
 	var toRemove []*db.Context
-	for _, dbContext := range dbContexts {
-		if _, ok := requestBody.Ids[dbContext.Id]; ok {
-			toRemove = append(toRemove, dbContext)
-		}
-	}
+	var commitMsg string
+	removeTokens := 0
+	var toRemoveApiContexts []*shared.Context
 
-	err = db.ContextRemove(auth.OrgId, planId, toRemove)
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:          auth.OrgId,
+		UserId:         auth.User.Id,
+		PlanId:         planId,
+		Branch:         branchName,
+		Reason:         "delete contexts",
+		Scope:          db.LockScopeWrite,
+		Ctx:            ctx,
+		CancelFn:       cancel,
+		ClearRepoOnErr: true,
+	}, func(repo *db.GitRepo) error {
+		var err error
+		dbContexts, err = db.GetPlanContexts(auth.OrgId, planId, false, false)
+
+		if err != nil {
+			return fmt.Errorf("error getting contexts: %v", err)
+		}
+
+		for _, dbContext := range dbContexts {
+			if _, ok := requestBody.Ids[dbContext.Id]; ok {
+				toRemove = append(toRemove, dbContext)
+			}
+		}
+
+		err = db.ContextRemove(auth.OrgId, planId, toRemove)
+
+		if err != nil {
+			return fmt.Errorf("error removing contexts: %v", err)
+		}
+
+		for _, dbContext := range toRemove {
+			toRemoveApiContexts = append(toRemoveApiContexts, dbContext.ToApi())
+			removeTokens += dbContext.NumTokens
+		}
+
+		commitMsg = shared.SummaryForRemoveContext(toRemoveApiContexts, branch.ContextTokens) + "\n\n" + shared.TableForRemoveContext(toRemoveApiContexts)
+
+		err = repo.GitAddAndCommit(branchName, commitMsg)
+
+		if err != nil {
+			return fmt.Errorf("error committing changes: %v", err)
+		}
+
+		return nil
+	})
 
 	if err != nil {
 		log.Printf("Error deleting contexts: %v\n", err)
 		http.Error(w, "Error deleting contexts: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	removeTokens := 0
-	var toRemoveApiContexts []*shared.Context
-	for _, dbContext := range toRemove {
-		toRemoveApiContexts = append(toRemoveApiContexts, dbContext.ToApi())
-		removeTokens += dbContext.NumTokens
-	}
-
-	commitMsg := shared.SummaryForRemoveContext(toRemoveApiContexts, branch.ContextTokens) + "\n\n" + shared.TableForRemoveContext(toRemoveApiContexts)
-	err = db.GitAddAndCommit(auth.OrgId, planId, branchName, commitMsg)
-
-	if err != nil {
-		log.Printf("Error committing changes: %v\n", err)
-		http.Error(w, "Error committing changes: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

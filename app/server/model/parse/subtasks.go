@@ -1,8 +1,9 @@
 package parse
 
 import (
+	"log"
 	"gpt4cli-server/db"
-	"strconv"
+	"regexp"
 	"strings"
 )
 
@@ -11,6 +12,7 @@ func ParseSubtasks(replyContent string) []*db.Subtask {
 	if len(split) < 2 {
 		split = strings.Split(replyContent, "### Task")
 		if len(split) < 2 {
+			log.Println("[Subtasks] No tasks section found in reply")
 			return nil
 		}
 	}
@@ -20,7 +22,6 @@ func ParseSubtasks(replyContent string) []*db.Subtask {
 	var subtasks []*db.Subtask
 	var currentTask *db.Subtask
 	var descLines []string
-	num := 1
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -28,22 +29,24 @@ func ParseSubtasks(replyContent string) []*db.Subtask {
 			continue
 		}
 
-		// Check for next task number prefix
-		prefix := strconv.Itoa(num) + ". "
-		if strings.HasPrefix(line, prefix) {
+		// Check for any number followed by a period and space
+		if matched, _ := regexp.MatchString(`^\d+\.\s`, line); matched {
 			// Save previous task if exists
 			if currentTask != nil {
 				currentTask.Description = strings.Join(descLines, "\n")
+				log.Printf("[Subtasks] Adding subtask: %q with %d uses files", currentTask.Title, len(currentTask.UsesFiles))
 				subtasks = append(subtasks, currentTask)
 			}
 
 			// Start new task
-			title := strings.TrimPrefix(line, prefix)
-			currentTask = &db.Subtask{
-				Title: title,
+			parts := strings.SplitN(line, ". ", 2)
+			if len(parts) == 2 {
+				title := parts[1]
+				currentTask = &db.Subtask{
+					Title: title,
+				}
+				descLines = nil
 			}
-			descLines = nil
-			num++
 			continue
 		}
 
@@ -58,6 +61,7 @@ func ParseSubtasks(replyContent string) []*db.Subtask {
 						currentTask.UsesFiles = append(currentTask.UsesFiles, use)
 					}
 				}
+				log.Printf("[Subtasks] Added uses files for %q: %v", currentTask.Title, currentTask.UsesFiles)
 			}
 			continue
 		}
@@ -76,8 +80,42 @@ func ParseSubtasks(replyContent string) []*db.Subtask {
 	// Save final task if exists
 	if currentTask != nil {
 		currentTask.Description = strings.Join(descLines, "\n")
+		log.Printf("[Subtasks] Adding final subtask: %q with %d uses files", currentTask.Title, len(currentTask.UsesFiles))
 		subtasks = append(subtasks, currentTask)
 	}
 
+	log.Printf("[Subtasks] Parsed %d total subtasks", len(subtasks))
 	return subtasks
+}
+
+func ParseRemoveSubtasks(replyContent string) []string {
+	split := strings.Split(replyContent, "### Remove Tasks")
+	if len(split) < 2 {
+		return nil
+	}
+
+	section := split[1]
+	lines := strings.Split(section, "\n")
+	var tasksToRemove []string
+
+	sawEmptyLine := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			sawEmptyLine = true
+			continue
+		}
+		if sawEmptyLine && !strings.HasPrefix(line, "-") {
+			break
+		}
+		if strings.HasPrefix(line, "- ") {
+			title := strings.TrimPrefix(line, "- ")
+			title = strings.TrimSpace(title)
+			if title != "" {
+				tasksToRemove = append(tasksToRemove, title)
+			}
+		}
+	}
+
+	return tasksToRemove
 }

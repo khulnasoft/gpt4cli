@@ -8,7 +8,8 @@ import (
 	"gpt4cli-server/syntax"
 	"strings"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	"golang.org/x/net/html"
 )
 
@@ -17,11 +18,11 @@ func mapSvelte(content []byte) []Definition {
 	defs := []Definition{}
 
 	if scriptContent != "" {
-		var lang shared.TreeSitterLanguage
+		var lang shared.Language
 		if scriptLang == "ts" {
-			lang = shared.TreeSitterLanguageTypescript
+			lang = shared.LanguageTypescript
 		} else {
-			lang = shared.TreeSitterLanguageJavascript
+			lang = shared.LanguageJavascript
 		}
 
 		parser := syntax.GetParserForLanguage(lang)
@@ -47,7 +48,7 @@ func mapSvelte(content []byte) []Definition {
 	defs = append(defs, mapMarkup(content)...)
 
 	if styleContent != "" {
-		parser := syntax.GetParserForLanguage(shared.TreeSitterLanguageCss)
+		parser := syntax.GetParserForLanguage(shared.LanguageCss)
 		tree, err := parser.ParseCtx(context.Background(), nil, []byte(styleContent))
 		if err != nil {
 			log.Printf("mapSvelte - error parsing style content: %v\n", err)
@@ -58,7 +59,7 @@ func mapSvelte(content []byte) []Definition {
 			Type:      "svelte-style",
 			Signature: "<style>",
 			Children: mapTraditional(Node{
-				Lang:   shared.TreeSitterLanguageCss,
+				Lang:   shared.LanguageCss,
 				TsNode: tree.RootNode(),
 				Bytes:  []byte(styleContent),
 			}, nil),

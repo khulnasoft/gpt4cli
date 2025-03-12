@@ -5,15 +5,15 @@ import (
 	"log"
 	"gpt4cli-server/db"
 	"gpt4cli-server/host"
+	"gpt4cli-server/model"
 	"gpt4cli-server/types"
 	"time"
 
-	"github.com/khulnasoft/gpt4cli/shared"
-	"github.com/sashabaranov/go-openai"
+	shared "gpt4cli-shared"
 )
 
 func activatePlan(
-	clients map[string]*openai.Client,
+	clients map[string]model.ClientInfo,
 	plan *db.Plan,
 	branch string,
 	auth *types.ServerAuth,

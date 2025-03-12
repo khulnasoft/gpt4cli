@@ -4,16 +4,19 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/fs"
-	"gpt4cli/stream"
-	streamtui "gpt4cli/stream_tui"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/stream"
+	streamtui "gpt4cli-cli/stream_tui"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
-func Build(params ExecParams, buildBg bool) (bool, error) {
+func Build(params ExecParams, flags types.BuildFlags) (bool, error) {
+	buildBg := flags.BuildBg
+
 	term.StartSpinner("")
 
 	contexts, apiErr := api.Client.ListContext(params.CurrentPlanId, params.CurrentBranch)
@@ -22,7 +25,13 @@ func Build(params ExecParams, buildBg bool) (bool, error) {
 		term.OutputErrorAndExit("Error getting context: %v", apiErr)
 	}
 
-	anyOutdated, didUpdate, err := params.CheckOutdatedContext(contexts)
+	paths, err := fs.GetProjectPaths(fs.GetBaseDirForContexts(contexts))
+
+	if err != nil {
+		return false, fmt.Errorf("error getting project paths: %v", err)
+	}
+
+	anyOutdated, didUpdate, err := params.CheckOutdatedContext(contexts, paths)
 
 	if err != nil {
 		term.OutputErrorAndExit("error checking outdated context: %v", err)
@@ -32,12 +41,6 @@ func Build(params ExecParams, buildBg bool) (bool, error) {
 		term.StopSpinner()
 		log.Println("Build canceled")
 		return false, nil
-	}
-
-	paths, err := fs.GetProjectPaths(fs.GetBaseDirForContexts(contexts))
-
-	if err != nil {
-		return false, fmt.Errorf("error getting project paths: %v", err)
 	}
 
 	var legacyApiKey, openAIBase, openAIOrgId string

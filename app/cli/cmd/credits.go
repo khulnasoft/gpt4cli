@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/term"
 	"strings"
 
 	"github.com/olekukonko/tablewriter"

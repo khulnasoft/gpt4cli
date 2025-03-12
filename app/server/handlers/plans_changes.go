@@ -11,8 +11,9 @@ import (
 	modelPlan "gpt4cli-server/model/plan"
 	"time"
 
+	shared "gpt4cli-shared"
+
 	"github.com/gorilla/mux"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func CurrentPlanHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,8 +26,10 @@ func CurrentPlanHandler(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	planId := vars["planId"]
+	branch := vars["branch"]
+	sha := vars["sha"]
 
-	log.Println("planId: ", planId)
+	log.Println("planId: ", planId, "branch: ", branch, "sha: ", sha)
 
 	if authorizePlan(w, planId, auth) == nil {
 		return
@@ -35,21 +38,49 @@ func CurrentPlanHandler(w http.ResponseWriter, r *http.Request) {
 	// Just in case this was sent immediately after a stream finished, wait a little before locking to allow for cleanup
 	time.Sleep(100 * time.Millisecond)
 
-	var err error
-
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
+	ctx, cancel := context.WithCancel(r.Context())
+	scope := db.LockScopeRead
+	if sha != "" {
+		scope = db.LockScopeWrite
 	}
+	log.Printf("locking with scope: %s", scope)
 
-	planState, err := db.GetCurrentPlanState(db.CurrentPlanStateParams{
-		OrgId:  auth.OrgId,
-		PlanId: planId,
+	var planState *shared.CurrentPlanState
+
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   planId,
+		Branch:   branch,
+		Scope:    scope,
+		Ctx:      ctx,
+		CancelFn: cancel,
+	}, func(repo *db.GitRepo) error {
+		var err error
+		if sha != "" {
+			err = repo.GitCheckoutSha(sha)
+			if err != nil {
+				return fmt.Errorf("error checking out sha: %v", err)
+			}
+
+			defer func() {
+				checkoutErr := repo.GitCheckoutBranch(branch)
+				if checkoutErr != nil {
+					log.Printf("Error checking out branch: %v\n", checkoutErr)
+				}
+			}()
+		}
+
+		planState, err = db.GetCurrentPlanState(db.CurrentPlanStateParams{
+			OrgId:  auth.OrgId,
+			PlanId: planId,
+		})
+
+		if err != nil {
+			return fmt.Errorf("error getting current plan state: %v", err)
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -82,7 +113,7 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	planId := vars["planId"]
 	branch := vars["branch"]
-	log.Println("planId: ", planId)
+	log.Println("planId: ", planId, "branch: ", branch)
 
 	plan := authorizePlan(w, planId, auth)
 	if plan == nil {
@@ -111,29 +142,46 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(100 * time.Millisecond)
 
 	ctx, cancel := context.WithCancel(r.Context())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
 
-	settings, err := db.GetPlanSettings(plan, true)
+	var settings *shared.PlanSettings
+	var currentPlanParams db.CurrentPlanStateParams
+	var currentPlan *shared.CurrentPlanState
+
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   planId,
+		Branch:   branch,
+		Scope:    db.LockScopeRead,
+		Ctx:      ctx,
+		CancelFn: cancel,
+	}, func(repo *db.GitRepo) error {
+		var err error
+		settings, err = db.GetPlanSettings(plan, true)
+		if err != nil {
+			return fmt.Errorf("error getting plan settings: %v", err)
+		}
+
+		currentPlanParams, err = db.GetFullCurrentPlanStateParams(auth.OrgId, planId)
+		if err != nil {
+			return fmt.Errorf("error getting current plan state params: %v", err)
+		}
+
+		currentPlan, err = db.GetCurrentPlanState(currentPlanParams)
+		if err != nil {
+			return fmt.Errorf("error getting current plan state: %v", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		log.Printf("Error getting plan settings: %v\n", err)
-		http.Error(w, "Error getting plan settings: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("Error getting current plan state: %v\n", err)
+		http.Error(w, "Error getting current plan state: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	currentPlan, err := db.ApplyPlan(ctx, auth.OrgId, auth.User.Id, branch, plan)
-
-	if err != nil {
-		log.Printf("Error applying plan: %v\n", err)
-		http.Error(w, "Error applying plan: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	log.Println("ApplyPlanHandler: Got current plan state:", currentPlan != nil)
 
 	clients := initClients(
 		initClientsParams{
@@ -146,10 +194,7 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 
-	envVar := settings.ModelPack.CommitMsg.BaseModelConfig.ApiKeyEnvVar
-	client := clients[envVar]
-
-	s, err := modelPlan.GenCommitMsgForPendingResults(auth, plan, client, settings, currentPlan, r.Context())
+	commitMsg, err := modelPlan.GenCommitMsgForPendingResults(auth, plan, clients, settings, currentPlan, r.Context())
 
 	if err != nil {
 		log.Printf("Error generating commit message: %v\n", err)
@@ -157,7 +202,34 @@ func ApplyPlanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte(s))
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:          auth.OrgId,
+		UserId:         auth.User.Id,
+		PlanId:         planId,
+		Branch:         branch,
+		Scope:          db.LockScopeWrite,
+		Ctx:            ctx,
+		CancelFn:       cancel,
+		ClearRepoOnErr: true,
+	}, func(repo *db.GitRepo) error {
+		return db.ApplyPlan(repo, ctx, db.ApplyPlanParams{
+			OrgId:                  auth.OrgId,
+			UserId:                 auth.User.Id,
+			BranchName:             branch,
+			Plan:                   plan,
+			CurrentPlanState:       currentPlan,
+			CurrentPlanStateParams: &currentPlanParams,
+			CommitMsg:              commitMsg,
+		})
+	})
+
+	if err != nil {
+		log.Printf("Error applying plan: %v\n", err)
+		http.Error(w, "Error applying plan: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte(commitMsg))
 
 	log.Println("Successfully applied plan", planId)
 }
@@ -179,30 +251,34 @@ func RejectAllChangesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var err error
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
 
-	err = db.RejectAllResults(auth.OrgId, planId)
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:          auth.OrgId,
+		UserId:         auth.User.Id,
+		PlanId:         planId,
+		Branch:         branch,
+		Scope:          db.LockScopeWrite,
+		Ctx:            ctx,
+		CancelFn:       cancel,
+		ClearRepoOnErr: true,
+	}, func(repo *db.GitRepo) error {
+		err := db.RejectAllResults(auth.OrgId, planId)
+		if err != nil {
+			return err
+		}
+
+		err = repo.GitAddAndCommit(branch, "🚫 Rejected all pending changes")
+		if err != nil {
+			return fmt.Errorf("error committing rejected changes: %v", err)
+		}
+
+		return nil
+	})
 
 	if err != nil {
 		log.Printf("Error rejecting all changes: %v\n", err)
 		http.Error(w, "Error rejecting all changes: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	err = db.GitAddAndCommit(auth.OrgId, planId, branch, "🚫 Rejected all pending changes")
-
-	if err != nil {
-		log.Printf("Error committing rejected changes: %v\n", err)
-		http.Error(w, "Error committing rejected changes: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -235,29 +311,34 @@ func RejectFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
 
-	err = db.RejectPlanFile(auth.OrgId, planId, req.FilePath, time.Now())
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:          auth.OrgId,
+		UserId:         auth.User.Id,
+		PlanId:         planId,
+		Branch:         branch,
+		Scope:          db.LockScopeWrite,
+		Ctx:            ctx,
+		CancelFn:       cancel,
+		ClearRepoOnErr: true,
+	}, func(repo *db.GitRepo) error {
+		err = db.RejectPlanFile(auth.OrgId, planId, req.FilePath, time.Now())
+		if err != nil {
+			return err
+		}
+
+		err = repo.GitAddAndCommit(branch, fmt.Sprintf("🚫 Rejected pending changes to file: %s", req.FilePath))
+		if err != nil {
+			return fmt.Errorf("error committing rejected changes: %v", err)
+		}
+
+		return nil
+	})
 
 	if err != nil {
 		log.Printf("Error rejecting result: %v\n", err)
 		http.Error(w, "Error rejecting result: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	err = db.GitAddAndCommit(auth.OrgId, planId, branch, fmt.Sprintf("🚫 Rejected pending changes to file: %s", req.FilePath))
-
-	if err != nil {
-		log.Printf("Error committing rejected changes: %v\n", err)
-		http.Error(w, "Error committing rejected changes: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -290,38 +371,44 @@ func RejectFilesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
 
-	err = db.RejectPlanFiles(auth.OrgId, planId, req.Paths, time.Now())
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:          auth.OrgId,
+		UserId:         auth.User.Id,
+		PlanId:         planId,
+		Branch:         branch,
+		Scope:          db.LockScopeWrite,
+		Ctx:            ctx,
+		CancelFn:       cancel,
+		ClearRepoOnErr: true,
+	}, func(repo *db.GitRepo) error {
+		err = db.RejectPlanFiles(auth.OrgId, planId, req.Paths, time.Now())
+		if err != nil {
+			return err
+		}
+
+		msg := "🚫 Rejected pending changes to file"
+		if len(req.Paths) > 1 {
+			msg += "s"
+		}
+		msg += ":"
+
+		for _, path := range req.Paths {
+			msg += fmt.Sprintf("\n • %s", path)
+		}
+
+		err = repo.GitAddAndCommit(branch, msg)
+		if err != nil {
+			return fmt.Errorf("error committing rejected changes: %v", err)
+		}
+
+		return nil
+	})
 
 	if err != nil {
 		log.Printf("Error rejecting result: %v\n", err)
 		http.Error(w, "Error rejecting result: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	msg := "🚫 Rejected pending changes to file"
-	if len(req.Paths) > 1 {
-		msg += "s"
-	}
-	msg += ":"
-
-	for _, path := range req.Paths {
-		msg += fmt.Sprintf("\n • %s", path)
-	}
-	err = db.GitAddAndCommit(auth.OrgId, planId, branch, msg)
-
-	if err != nil {
-		log.Printf("Error committing rejected changes: %v\n", err)
-		http.Error(w, "Error committing rejected changes: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -443,18 +530,26 @@ func GetPlanDiffsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var err error
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeRead, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
-		}()
-	}
+	ctx, cancel := context.WithCancel(r.Context())
+	var diffs string
 
-	diffs, err := db.GetPlanDiffs(auth.OrgId, planId, plain)
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   planId,
+		Branch:   branch,
+		Scope:    db.LockScopeRead,
+		Ctx:      ctx,
+		CancelFn: cancel,
+	}, func(repo *db.GitRepo) error {
+		var err error
+		diffs, err = db.GetPlanDiffs(auth.OrgId, planId, plain)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 
 	if err != nil {
 		log.Printf("Error getting plan diffs: %v\n", err)

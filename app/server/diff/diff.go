@@ -10,8 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	shared "gpt4cli-shared"
+
 	"github.com/google/uuid"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func GetDiffs(original, updated string) (string, error) {

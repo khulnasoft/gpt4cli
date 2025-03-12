@@ -2,56 +2,59 @@ package lib
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/fs"
-	"gpt4cli/term"
-	"gpt4cli/types"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
-type ApplyFlags struct {
-	AutoConfirm bool
-	AutoCommit  bool
-	NoCommit    bool
-	AutoExec    bool
-	NoExec      bool
-	AutoDebug   int
+type ApplyPlanParams struct {
+	PlanId      string
+	Branch      string
+	ApplyFlags  types.ApplyFlags
+	TellFlags   types.TellFlags
+	OnExecFail  types.OnApplyExecFailFn
+	ExecCommand string
 }
 
 func MustApplyPlan(
-	planId,
-	branch string,
-	flags ApplyFlags,
-	onExecFail types.OnApplyExecFailFn,
+	params ApplyPlanParams,
 ) {
-	MustApplyPlanAttempt(planId, branch, flags, onExecFail, 0)
+	MustApplyPlanAttempt(params, 0)
 }
 
 func MustApplyPlanAttempt(
-	planId,
-	branch string,
-	flags ApplyFlags,
-	onExecFail types.OnApplyExecFailFn,
+	params ApplyPlanParams,
 	attempt int,
 ) {
 	log.Println("Applying plan")
 
-	autoConfirm := flags.AutoConfirm
-	autoCommit := flags.AutoCommit
-	noCommit := flags.NoCommit
-	noExec := flags.NoExec
+	applyFlags := params.ApplyFlags
+	planId := params.PlanId
+	branch := params.Branch
+	onExecFail := params.OnExecFail
+
+	autoConfirm := applyFlags.AutoConfirm
+	autoCommit := applyFlags.AutoCommit
+	noCommit := applyFlags.NoCommit
+	noExec := applyFlags.NoExec
 
 	term.StartSpinner("")
 
@@ -102,7 +105,13 @@ func MustApplyPlanAttempt(
 		}
 	}
 
-	anyOutdated, didUpdate, err := CheckOutdatedContextWithOutput(true, autoConfirm, nil)
+	paths, err := fs.GetProjectPaths(fs.ProjectRoot)
+
+	if err != nil {
+		term.OutputErrorAndExit("error getting project paths: %v", err)
+	}
+
+	anyOutdated, didUpdate, err := CheckOutdatedContextWithOutput(true, autoConfirm, nil, paths)
 
 	if err != nil {
 		term.OutputErrorAndExit("error checking outdated context: %v", err)
@@ -113,6 +122,8 @@ func MustApplyPlanAttempt(
 		fmt.Println("Apply plan canceled")
 		os.Exit(0)
 	}
+
+	term.ResumeSpinner()
 
 	currentPlanFiles := currentPlanState.CurrentPlanFiles
 	isRepo := fs.ProjectRootIsGitRepo()
@@ -144,6 +155,7 @@ func MustApplyPlanAttempt(
 
 	onGitErr := func(errMsg, unformattedErrMsg string) {
 		term.StopSpinner()
+		fmt.Println()
 		term.OutputSimpleError(errMsg, unformattedErrMsg)
 	}
 
@@ -179,7 +191,7 @@ func MustApplyPlanAttempt(
 			term.ResumeSpinner()
 		}
 
-		updatedFiles, toRollback, err = applyFiles(toApply, toRemove)
+		updatedFiles, toRollback, err = ApplyFiles(toApply, toRemove, paths)
 
 		if err != nil {
 			onErr("failed to apply files: %s", err)
@@ -189,6 +201,7 @@ func MustApplyPlanAttempt(
 	}
 
 	onExecSuccess := func() {
+		term.StartSpinner("")
 		commitSummary, err := apiApplyPlan(planId, branch)
 
 		if err != nil {
@@ -205,11 +218,14 @@ func MustApplyPlanAttempt(
 					suffix = "s"
 				}
 				fmt.Printf("✅ Applied changes, %d file%s updated\n", len(updatedFiles), suffix)
+				for _, file := range updatedFiles {
+					fmt.Println(" • 📄 " + file)
+				}
 			}
 
 			if isRepo && !noCommit {
-				gitErr := commitApplied(autoCommit, commitSummary, updatedFiles, currentPlanState)
 				term.StopSpinner()
+				gitErr := commitApplied(autoCommit, commitSummary, updatedFiles, currentPlanState)
 				appliedMsgFn()
 				if gitErr != nil {
 					onGitErr("Failed to commit changes:", gitErr.Error())
@@ -222,14 +238,14 @@ func MustApplyPlanAttempt(
 	}
 
 	if _, ok := toApply["_apply.sh"]; ok && !noExec {
-		handleApplyScript(flags, toApply, onErr, toRollback, onExecFail, attempt, onExecSuccess)
+		handleApplyScript(params, toApply, onErr, toRollback, onExecFail, attempt, onExecSuccess)
 	} else {
 		onExecSuccess()
 	}
 }
 
 func handleApplyScript(
-	flags ApplyFlags,
+	params ApplyPlanParams,
 	toApply map[string]string,
 	onErr types.OnErrFn,
 	toRollback *types.ApplyRollbackPlan,
@@ -243,7 +259,12 @@ func handleApplyScript(
 
 	color.New(term.ColorHiCyan, color.Bold).Println("🚀 Commands to execute 👇")
 
-	content := toApply["_apply.sh"]
+	var content string
+	if params.ExecCommand != "" {
+		content = params.ExecCommand
+	} else {
+		content = toApply["_apply.sh"]
+	}
 
 	md, err := term.GetMarkdown("```bash\n" + content + "\n```")
 
@@ -256,11 +277,10 @@ func handleApplyScript(
 	log.Println("Asking user to confirm executing apply script")
 
 	var confirmed bool
-	if flags.AutoExec {
+	if params.ApplyFlags.AutoExec {
 		confirmed = true
 	} else {
 		confirmed, err = term.ConfirmYesNo("Execute now?")
-
 		if err != nil {
 			onErr("failed to get confirmation user input: %s", err)
 		}
@@ -268,10 +288,10 @@ func handleApplyScript(
 
 	if confirmed {
 		log.Println("Executing apply script")
-		execApplyScript(flags, toApply, onErr, toRollback, onExecFail, attempt, onSuccess)
+		execApplyScript(params, toApply, onErr, toRollback, onExecFail, attempt, onSuccess)
 	} else {
 		if toRollback != nil && toRollback.HasChanges() {
-			res, err := term.SelectFromList("Skipping execution. Still apply other changes or roll back all changes?", []string{string(types.ApplyRollbackOptionKeep), string(types.ApplyRollbackOptionRollback)})
+			res, err := term.SelectFromList("Skipping execution. Apply file changes or roll back?", []string{string(types.ApplyRollbackOptionKeep), string(types.ApplyRollbackOptionRollback)})
 
 			if err != nil {
 				onErr("failed to get rollback confirmation user input: %s", err)
@@ -279,6 +299,8 @@ func handleApplyScript(
 
 			if res == string(types.ApplyRollbackOptionRollback) {
 				Rollback(toRollback, true)
+				fmt.Println()
+				os.Exit(0)
 			} else {
 				onSuccess()
 			}
@@ -294,16 +316,12 @@ var shellShebangs = map[string]string{
 }
 
 var applyScriptErrorHandling = map[string]string{
-	"/bin/bash": `set -euo pipefail
-trap 'echo "Error on line $LINENO: $BASH_COMMAND"' ERR
-`,
-	"/bin/zsh": `set -euo pipefail
-trap 'echo "Error on line $LINENO: ${funcfiletrace[0]#*:}"' ERR
-`,
+	"/bin/bash": `set -euo pipefail`,
+	"/bin/zsh":  `set -euo pipefail`,
 }
 
 func execApplyScript(
-	flags ApplyFlags,
+	params ApplyPlanParams,
 	toApply map[string]string,
 	onErr types.OnErrFn,
 	toRollback *types.ApplyRollbackPlan,
@@ -316,9 +334,15 @@ func execApplyScript(
 	color.New(term.ColorHiCyan, color.Bold).Println("🚀 Executing... Output below:")
 	fmt.Println()
 
-	dstPath := filepath.Join(fs.ProjectRoot, "_apply.sh")
+	var content string
 
-	content := toApply["_apply.sh"]
+	if params.ExecCommand != "" {
+		content = params.ExecCommand
+	} else {
+		content = toApply["_apply.sh"]
+	}
+
+	dstPath := filepath.Join(fs.ProjectRoot, "_apply.sh")
 	lines := strings.Split(content, "\n")
 	filteredLines := []string{}
 
@@ -374,36 +398,65 @@ func execApplyScript(
 	}
 	execCmd.Stderr = execCmd.Stdout
 
+	// Set platform-specific process attributes
+	SetPlatformSpecificAttrs(execCmd)
+
 	if err := execCmd.Start(); err != nil {
 		os.Remove(dstPath)
 		onErr("failed to start command: %s", err)
 	}
 
-	// Handle SIGINT and SIGTERM -- delete _apply.sh and kill process
+	// Create a context that we can cancel
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Use atomic variable to prevent data races
+	var interrupted atomic.Bool
+
+	// Handle SIGINT and SIGTERM
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+	var interruptHandled atomic.Bool
+	var interruptWG sync.WaitGroup
+
+	// Start the interrupt handler goroutine
+	interruptWG.Add(1)
 	go func() {
-		sig := <-sigChan
-		os.Remove(dstPath)
+		defer interruptWG.Done()
 
-		if toRollback != nil && toRollback.HasChanges() {
-			color.New(term.ColorHiRed, color.Bold).Println("🚨 Execution interrupted")
-			res, err := term.SelectFromList("Still apply other changes or roll back all changes?", []string{string(types.ApplyRollbackOptionKeep), string(types.ApplyRollbackOptionRollback)})
-			if err != nil {
-				onErr("failed to get rollback confirmation user input: %s", err)
-			}
+		for {
+			select {
+			case <-sigChan:
+				if interruptHandled.CompareAndSwap(false, true) {
+					fmt.Println()
+					color.New(term.ColorHiYellow, color.Bold).Println("\n👉 Caught interrupt. Exiting gracefully...")
+					fmt.Println()
+					interrupted.Store(true)
 
-			if res == string(types.ApplyRollbackOptionRollback) {
-				Rollback(toRollback, true)
-			} else {
-				onSuccess()
+					if err := KillProcessGroup(execCmd, syscall.SIGINT); err != nil {
+						log.Printf("Failed to send interrupt signal to process group: %v", err)
+					}
+
+					select {
+					case <-time.After(2 * time.Second):
+						fmt.Println()
+						color.New(term.ColorHiYellow, color.Bold).Println("👉 Commands didn't exit after 2 seconds. Sending SIGKILL.")
+						fmt.Println()
+						if err := KillProcessGroup(execCmd, syscall.SIGKILL); err != nil {
+							log.Printf("Failed to terminate process group: %v", err)
+						}
+					case <-ctx.Done():
+						return
+					}
+				}
+
+			case <-ctx.Done():
+				// If no interrupts occurred, this will be the normal exit path
+				return
 			}
 		}
-
-		execCmd.Process.Signal(sig)
 	}()
-	defer signal.Stop(sigChan)
 
 	// Read and display output in real-time
 	scanner := bufio.NewScanner(pipe)
@@ -414,7 +467,42 @@ func execApplyScript(
 		outputBuilder.WriteString(line + "\n")
 	}
 
+	// Check for scanner errors
+	if scanErr := scanner.Err(); scanErr != nil {
+		log.Printf("⚠️ Scanner error reading subprocess output: %v", scanErr)
+	}
+
 	err = execCmd.Wait()
+
+	// Ensure interrupt handler fully completes before proceeding
+	cancel()           // cancel the context, if not already
+	interruptWG.Wait() // wait until the interrupt handler goroutine finishes
+	signal.Stop(sigChan)
+	close(sigChan)
+
+	success := err == nil
+
+	if interrupted.Load() {
+		os.Remove(dstPath)
+
+		fmt.Println()
+		color.New(term.ColorHiYellow, color.Bold).Println("👉  Execution interrupted")
+
+		didSucceed, canceled, err := term.ConfirmYesNoCancel("Did the commands succeed?")
+
+		if err != nil {
+			onErr("failed to get confirmation user input: %s", err)
+		}
+
+		success = didSucceed
+
+		if canceled {
+			// rollback and exit
+			Rollback(toRollback, true)
+			fmt.Println()
+			os.Exit(0)
+		}
+	}
 
 	// remove _apply.sh without overwriting err val
 	{
@@ -424,7 +512,7 @@ func execApplyScript(
 		}
 	}
 
-	if err != nil {
+	if !success {
 		fmt.Println()
 		color.New(term.ColorHiRed, color.Bold).Println("🚨 Commands failed")
 
@@ -439,7 +527,6 @@ func execApplyScript(
 		fmt.Println("✅ Commands succeeded")
 		onSuccess()
 	}
-
 }
 
 func apiApplyPlan(planId, branch string) (string, error) {
@@ -479,9 +566,7 @@ func commitApplied(autoCommit bool, commitSummary string, updatedFiles []string,
 		fmt.Println()
 		// fmt.Println("ℹ️  Only the files that Gpt4cli is updating will be included the commit. Any other changes, staged or unstaged, will remain exactly as they are.")
 		// fmt.Println()
-
 		confirmed, err = term.ConfirmYesNo("Commit Gpt4cli updates now?")
-
 		if err != nil {
 			return fmt.Errorf("failed to get confirmation user input: %s", err)
 		}
@@ -490,12 +575,9 @@ func commitApplied(autoCommit bool, commitSummary string, updatedFiles []string,
 	if confirmed {
 		// Commit the changes
 		msg := currentPlanState.PendingChangesSummaryForApply(commitSummary)
-
 		// log.Println("Committing changes with message:")
 		// log.Println(msg)
-
 		// spew.Dump(currentPlanState)
-
 		err = GitAddAndCommitPaths(fs.ProjectRoot, msg, updatedFiles, true)
 		if err != nil {
 			return fmt.Errorf("failed to commit changes: %s", err.Error())
@@ -505,14 +587,13 @@ func commitApplied(autoCommit bool, commitSummary string, updatedFiles []string,
 	return nil
 }
 
-func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, *types.ApplyRollbackPlan, error) {
+func ApplyFiles(toApply map[string]string, toRemove map[string]bool, projectPaths *types.ProjectPaths) ([]string, *types.ApplyRollbackPlan, error) {
 	var updatedFiles []string
 	toRevert := map[string]types.ApplyReversion{}
 	var toRemoveOnRollback []string
-	var projectPaths *types.ProjectPaths
 
 	var mu sync.Mutex
-	totalOps := len(toApply) + len(toRemove) + 1
+	totalOps := len(toApply) + len(toRemove)
 	errCh := make(chan error, totalOps)
 
 	for path, content := range toApply {
@@ -520,12 +601,10 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 			errCh <- nil
 			continue
 		}
-
 		go func(path, content string) {
 			// Compute destination path
 			dstPath := filepath.Join(fs.ProjectRoot, path)
 			content = strings.ReplaceAll(content, "\\`\\`\\`", "```")
-
 			// Check if the file exists
 			var exists bool
 			var mode os.FileMode
@@ -545,12 +624,10 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 			if exists {
 				// read file content
 				bytes, err := os.ReadFile(dstPath)
-
 				if err != nil {
 					errCh <- fmt.Errorf("failed to read %s: %s", dstPath, err.Error())
 					return
 				}
-
 				// Check if the file has changed
 				if string(bytes) == content {
 					// log.Println("File is unchanged, skipping")
@@ -567,7 +644,6 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 				updatedFiles = append(updatedFiles, path)
 				toRemoveOnRollback = append(toRemoveOnRollback, dstPath)
 				mu.Unlock()
-
 				// Create the directory if it doesn't exist
 				err := os.MkdirAll(filepath.Dir(dstPath), 0755)
 				if err != nil {
@@ -575,14 +651,12 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 					return
 				}
 			}
-
 			// Write the file
 			err = os.WriteFile(dstPath, []byte(content), 0644)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to write %s: %s", dstPath, err.Error())
 				return
 			}
-
 			errCh <- nil
 		}(path, content)
 	}
@@ -595,7 +669,6 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 			}
 			// Compute destination path
 			dstPath := filepath.Join(fs.ProjectRoot, path)
-
 			// Check if the file exists
 			var exists bool
 			var mode os.FileMode
@@ -611,37 +684,24 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 					return
 				}
 			}
-
 			if exists {
 				content, err := os.ReadFile(dstPath)
 				if err != nil {
 					errCh <- fmt.Errorf("failed to read %s: %s", dstPath, err.Error())
 					return
 				}
-
 				err = os.Remove(dstPath)
 				if err != nil && !os.IsNotExist(err) {
 					errCh <- fmt.Errorf("failed to remove %s: %s", dstPath, err.Error())
 					return
 				}
-
 				mu.Lock()
 				toRevert[dstPath] = types.ApplyReversion{Content: string(content), Mode: mode}
 				mu.Unlock()
 			}
-
 			errCh <- nil
 		}(path, remove)
 	}
-
-	go func() {
-		var err error
-		projectPaths, err = fs.GetProjectPaths(fs.ProjectRoot)
-		if err != nil {
-			errCh <- fmt.Errorf("failed to get project paths: %v", err)
-		}
-		errCh <- nil
-	}()
 
 	for i := 0; i < totalOps; i++ {
 		err := <-errCh
@@ -659,7 +719,6 @@ func applyFiles(toApply map[string]string, toRemove map[string]bool) ([]string, 
 
 func Rollback(rollbackPlan *types.ApplyRollbackPlan, msg bool) error {
 	errCh := make(chan error, len(rollbackPlan.ToRevert)+len(rollbackPlan.ToRemove))
-
 	for path, revert := range rollbackPlan.ToRevert {
 		go func(path string, revert types.ApplyReversion) {
 			err := os.WriteFile(path, []byte(revert.Content), revert.Mode)
@@ -670,7 +729,6 @@ func Rollback(rollbackPlan *types.ApplyRollbackPlan, msg bool) error {
 			errCh <- nil
 		}(path, revert)
 	}
-
 	for _, path := range rollbackPlan.ToRemove {
 		go func(path string) {
 			err := os.Remove(path)
@@ -681,30 +739,25 @@ func Rollback(rollbackPlan *types.ApplyRollbackPlan, msg bool) error {
 			errCh <- nil
 		}(path)
 	}
-
 	go func() {
 		var err error
-		projectPaths, err := fs.GetProjectPaths(fs.ProjectRoot)
+		updatedProjectPaths, err := fs.GetProjectPaths(fs.ProjectRoot)
 		if err != nil {
 			errCh <- fmt.Errorf("failed to get project paths: %v", err)
 		}
-
 		var toRemove []string
-		for path := range projectPaths.ActivePaths {
+		for path := range updatedProjectPaths.ActivePaths {
 			if _, ok := rollbackPlan.PreviousProjectPaths.ActivePaths[path]; !ok {
 				toRemove = append(toRemove, path)
 			}
 		}
-
 		pathsErrCh := make(chan error, len(toRemove))
-
 		for _, path := range toRemove {
 			go func(path string) {
 				err := os.Remove(path)
 				pathsErrCh <- err
 			}(path)
 		}
-
 		for range toRemove {
 			err := <-pathsErrCh
 			if err != nil {
@@ -712,26 +765,20 @@ func Rollback(rollbackPlan *types.ApplyRollbackPlan, msg bool) error {
 				return
 			}
 		}
-
 		errCh <- nil
 	}()
-
 	errs := []error{}
-
 	for i := 0; i < len(rollbackPlan.ToRevert)+len(rollbackPlan.ToRemove)+1; i++ {
 		err := <-errCh
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
-
 	if len(errs) > 0 {
 		return fmt.Errorf("failed to rollback: %s", errs)
 	}
-
 	if msg {
 		fmt.Println("🚫 Rolled back all changes")
 	}
-
 	return nil
 }

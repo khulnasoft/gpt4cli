@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const defaultAutoDebugTries = 5
@@ -15,50 +16,36 @@ const (
 
 const defaultEditor = EditorTypeVim
 
-type ReplType string
-
-const (
-	ReplTypeTell ReplType = "tell"
-	ReplTypeChat ReplType = "chat"
-	ReplTypeAuto ReplType = "auto"
-)
-
 type AutoModeType string
 
 const (
-	AutoModeFull      AutoModeType = "full"
-	AutoModeSemi      AutoModeType = "semi"
-	AutoModeBasicPlus AutoModeType = "basic-plus"
-	AutoModeBasic     AutoModeType = "basic"
-	AutoModeNone      AutoModeType = "none"
-	AutoModeCustom    AutoModeType = "custom"
+	AutoModeFull   AutoModeType = "full"
+	AutoModeSemi   AutoModeType = "semi"
+	AutoModePlus   AutoModeType = "plus"
+	AutoModeBasic  AutoModeType = "basic"
+	AutoModeNone   AutoModeType = "none"
+	AutoModeCustom AutoModeType = "custom"
 )
 
-var AutoModeOptions = [][2]string{
-	{string(AutoModeFull), "Full Auto"},
-
-	// "→ automatically selects context, updates changes context, includes only necessary context for each step, continues iterating until plan is complete, builds plan into file edits, applies changes, executes commands, and debugs failed commands up to " + strconv.Itoa(defaultAutoDebugTries) + " attempts."},
-
-	{string(AutoModeSemi), "Semi Auto"},
-
-	// "→  automatically selects context, updates changed context, includes only necessary context for each step, continues iterating until plan is complete, and builds plan into pending file edits. User applies changes manually. Automatically commits after apply in git repos. Plans can include commands to execute, but user must approve execution and debugging of failed commands."},
-
-	{string(AutoModeBasic), "Basic Plus"},
-
-	// " → manual selection of context. Context with changes is updates automatically. Includes only necessary context for each step. Continues iterating until plan is complete, and builds plan into pending file edits. User applies changes manually. Automatically commits after apply in git repos. Plans can include commands to execute, but user must approve execution and debugging of failed commands."},
-
-	{string(AutoModeBasic), "Basic"},
-
-	// " → manual selection of context. Updating changed context must be approved. Each step includes all context (no smart context). Continues iterating until plan is complete, and builds plan into pending file edits. User applies changes manually. No automatic commit after apply in git repos. No execution of commands."},
-
-	{string(AutoModeNone), "None"},
-
-	// "→  manual selection of context. Updating changes context must be approved. Each step includes all context (no smart context). Plans only proceed one iteration at a time with no automatic continuation. Changes are not automatically built into pending file edits. User builds and applies changes manually. No automatic commit after apply in git repos. No execution of commands."},
-
-	{string(AutoModeCustom), "Custom"},
-
-	// " → mix and match config settings individually."},
+var AutoModeDescriptions = map[AutoModeType]string{
+	AutoModeFull:   "Fully automated: context, apply, execution and debugging",
+	AutoModeSemi:   "Auto context, manual apply and execution",
+	AutoModePlus:   "Manual context with auto updates and smart loading, manual apply and execution",
+	AutoModeBasic:  "Manual context, manual apply and execution",
+	AutoModeNone:   "Fully manual and step-by-step, one response at a time, manual builds",
+	AutoModeCustom: "Choose settings individually with set-config command",
 }
+
+var AutoModeOptions = [][3]string{
+	{string(AutoModeFull), "Full Auto", AutoModeDescriptions[AutoModeFull]},
+	{string(AutoModeSemi), "Semi Auto", AutoModeDescriptions[AutoModeSemi]},
+	{string(AutoModePlus), "Basic Plus", AutoModeDescriptions[AutoModePlus]},
+	{string(AutoModeBasic), "Basic", AutoModeDescriptions[AutoModeBasic]},
+	{string(AutoModeNone), "None", AutoModeDescriptions[AutoModeNone]},
+	{string(AutoModeCustom), "Custom", AutoModeDescriptions[AutoModeCustom]},
+}
+
+var AutoModeLabels = map[AutoModeType]string{}
 
 // populated in init()
 var AutoModeChoices []string
@@ -85,11 +72,14 @@ type PlanConfig struct {
 
 	AutoApply  bool `json:"autoApply"`
 	AutoCommit bool `json:"autoCommit"`
+	SkipCommit bool `json:"skipCommit"`
 
 	CanExec        bool `json:"canExec"`
 	AutoExec       bool `json:"autoExec"`
 	AutoDebug      bool `json:"autoDebug"`
 	AutoDebugTries int  `json:"autoDebugTries"`
+
+	AutoRevertOnRewind bool `json:"autoRevertOnRewind"`
 
 	// ReplMode    bool     `json:"replMode"`
 	// DefaultRepl ReplType `json:"defaultRepl"`
@@ -99,7 +89,6 @@ type PlanConfig struct {
 	// PlainTextStream   bool `json:"plainTextStream"`
 }
 
-// autonomy settings are configured below in init()
 var DefaultPlanConfig = PlanConfig{
 	Editor: defaultEditor,
 }
@@ -147,6 +136,7 @@ func (p *PlanConfig) SetAutoMode(mode AutoModeType) {
 		p.AutoExec = true
 		p.AutoDebug = true
 		p.AutoDebugTries = defaultAutoDebugTries
+		p.AutoRevertOnRewind = true
 
 	case AutoModeSemi:
 		p.AutoContinue = true
@@ -159,8 +149,9 @@ func (p *PlanConfig) SetAutoMode(mode AutoModeType) {
 		p.CanExec = true
 		p.AutoExec = false
 		p.AutoDebug = false
+		p.AutoRevertOnRewind = true
 
-	case AutoModeBasicPlus:
+	case AutoModePlus:
 		p.AutoContinue = true
 		p.AutoBuild = true
 		p.AutoUpdateContext = true
@@ -171,6 +162,7 @@ func (p *PlanConfig) SetAutoMode(mode AutoModeType) {
 		p.CanExec = true
 		p.AutoExec = false
 		p.AutoDebug = false
+		p.AutoRevertOnRewind = true
 
 	case AutoModeBasic:
 		p.AutoContinue = true
@@ -183,6 +175,7 @@ func (p *PlanConfig) SetAutoMode(mode AutoModeType) {
 		p.CanExec = false
 		p.AutoExec = false
 		p.AutoDebug = false
+		p.AutoRevertOnRewind = true
 
 	case AutoModeNone:
 		p.AutoContinue = false
@@ -195,6 +188,7 @@ func (p *PlanConfig) SetAutoMode(mode AutoModeType) {
 		p.CanExec = false
 		p.AutoExec = false
 		p.AutoDebug = false
+		p.AutoRevertOnRewind = true
 	}
 }
 
@@ -227,7 +221,7 @@ var ConfigSettingsByKey = map[string]ConfigSetting{
 		Choices: &AutoModeChoices,
 		ChoiceToKey: func(choice string) string {
 			for _, option := range AutoModeOptions {
-				if option[1] == choice {
+				if strings.HasPrefix(choice, option[1]) {
 					return option[0]
 				}
 			}
@@ -331,7 +325,7 @@ var ConfigSettingsByKey = map[string]ConfigSetting{
 	},
 	"autocommit": {
 		Name: "auto-commit",
-		Desc: "Automatically commit changes after apply",
+		Desc: "Automatically commit changes to git after apply",
 		BoolSetter: func(p *PlanConfig, enabled bool) {
 			if enabled != p.AutoCommit {
 				p.AutoMode = AutoModeCustom
@@ -340,6 +334,16 @@ var ConfigSettingsByKey = map[string]ConfigSetting{
 		},
 		Getter: func(p *PlanConfig) string {
 			return fmt.Sprintf("%t", p.AutoCommit)
+		},
+	},
+	"skipcommit": {
+		Name: "skip-commit",
+		Desc: "Skip committing changes to git after apply",
+		BoolSetter: func(p *PlanConfig, enabled bool) {
+			p.SkipCommit = enabled
+		},
+		Getter: func(p *PlanConfig) string {
+			return fmt.Sprintf("%t", p.SkipCommit)
 		},
 	},
 	"autoapply": {
@@ -448,12 +452,26 @@ var ConfigSettingsByKey = map[string]ConfigSetting{
 			return fmt.Sprintf("%d", p.AutoDebugTries)
 		},
 	},
+	"autorevert": {
+		Name: "auto-revert",
+		Desc: "Automatically update project files when rewinding plan",
+		BoolSetter: func(p *PlanConfig, enabled bool) {
+			if enabled != p.AutoRevertOnRewind {
+				p.AutoMode = AutoModeCustom
+			}
+			p.AutoRevertOnRewind = enabled
+		},
+		Getter: func(p *PlanConfig) string {
+			return fmt.Sprintf("%t", p.AutoRevertOnRewind)
+		},
+	},
 }
 
 func init() {
 	DefaultPlanConfig.SetAutoMode(AutoModeSemi)
 
 	for _, choice := range AutoModeOptions {
-		AutoModeChoices = append(AutoModeChoices, choice[1])
+		AutoModeChoices = append(AutoModeChoices, fmt.Sprintf("%s → %s", choice[1], choice[2]))
+		AutoModeLabels[AutoModeType(choice[0])] = choice[1]
 	}
 }

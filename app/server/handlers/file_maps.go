@@ -10,8 +10,9 @@ import (
 	"runtime"
 	"sync"
 
+	shared "gpt4cli-shared"
+
 	"github.com/gorilla/mux"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func GetFileMapHandler(w http.ResponseWriter, r *http.Request) {
@@ -19,12 +20,32 @@ func GetFileMapHandler(w http.ResponseWriter, r *http.Request) {
 
 	auth := Authenticate(w, r, true)
 	if auth == nil {
+		log.Println("GetFileMapHandler: auth failed")
 		return
 	}
 
 	var req shared.GetFileMapRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Error decoding request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	log.Println("GetFileMapHandler: checking limits")
+
+	if len(req.MapInputs) > shared.MaxContextMapPaths {
+		http.Error(w, fmt.Sprintf("Too many files to map: %d (max %d)", len(req.MapInputs), shared.MaxContextMapPaths), http.StatusBadRequest)
+		return
+	}
+
+	totalSize := 0
+	for _, input := range req.MapInputs {
+		totalSize += len(input)
+	}
+
+	// Allow a little extra space for empty file maps after the total size limit is exceeded
+	// On the client, once the total size limit is exceeded, we send empty file maps for remaining files
+	if totalSize > shared.MaxContextMapInputSize+10000 {
+		http.Error(w, fmt.Sprintf("Max map size exceeded: %d (max %d)", totalSize, shared.MaxContextMapInputSize), http.StatusBadRequest)
 		return
 	}
 
@@ -42,7 +63,16 @@ func GetFileMapHandler(w http.ResponseWriter, r *http.Request) {
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
 
+	log.Printf("GetFileMapHandler: len(req.MapInputs): %d", len(req.MapInputs))
+
 	for path, input := range req.MapInputs {
+		if !shared.HasFileMapSupport(path) {
+			mu.Lock()
+			maps[path] = "[NO MAP]"
+			mu.Unlock()
+			continue
+		}
+
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(path string, input string) {
@@ -61,6 +91,8 @@ func GetFileMapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
+	log.Printf("GetFileMapHandler: len(maps): %d", len(maps))
+
 	resp := shared.GetFileMapResponse{
 		MapBodies: maps,
 	}
@@ -70,6 +102,8 @@ func GetFileMapHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("GetFileMapHandler success - writing response bytes: %d", len(respBytes))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(respBytes)
@@ -158,7 +192,15 @@ func LoadCachedFileMapHandler(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		loadRes, _ = loadContexts(w, r, auth, &loadReq, plan, branchName, cachedMapsByPath)
+		loadRes, _ = loadContexts(loadContextsParams{
+			w:                w,
+			r:                r,
+			auth:             auth,
+			loadReq:          &loadReq,
+			plan:             plan,
+			branchName:       branchName,
+			cachedMapsByPath: cachedMapsByPath,
+		})
 
 		if loadRes == nil {
 			log.Println("LoadCachedFileMapHandler - loadRes is nil")

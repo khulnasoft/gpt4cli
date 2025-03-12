@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"fmt"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/plan_exec"
-	"gpt4cli/term"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/plan_exec"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	"github.com/spf13/cobra"
 )
 
@@ -24,11 +26,12 @@ func init() {
 	RootCmd.AddCommand(buildCmd)
 
 	initExecFlags(buildCmd, initExecFlagsParams{
-		omitFile:        true,
-		omitNoBuild:     true,
-		omitEditor:      true,
-		omitStop:        true,
-		omitAutoContext: true,
+		omitFile:         true,
+		omitNoBuild:      true,
+		omitEditor:       true,
+		omitStop:         true,
+		omitAutoContext:  true,
+		omitSmartContext: true,
 	})
 }
 
@@ -46,10 +49,14 @@ func build(cmd *cobra.Command, args []string) {
 		CurrentPlanId: lib.CurrentPlanId,
 		CurrentBranch: lib.CurrentBranch,
 		ApiKeys:       apiKeys,
-		CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
-			return lib.CheckOutdatedContextWithOutput(false, tellAutoContext, maybeContexts)
+		CheckOutdatedContext: func(maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (bool, bool, error) {
+			auto := autoConfirm || tellAutoApply || tellAutoContext
+			return lib.CheckOutdatedContextWithOutput(auto, auto, maybeContexts, projectPaths)
 		},
-	}, tellBg)
+	}, types.BuildFlags{
+		BuildBg:   tellBg,
+		AutoApply: tellAutoApply,
+	})
 
 	if err != nil {
 		term.OutputErrorAndExit("Error building plan: %v", err)
@@ -66,7 +73,7 @@ func build(cmd *cobra.Command, args []string) {
 		fmt.Println()
 		term.PrintCmds("", "ps", "connect", "stop")
 	} else if tellAutoApply {
-		flags := lib.ApplyFlags{
+		applyFlags := types.ApplyFlags{
 			AutoConfirm: true,
 			AutoCommit:  autoCommit,
 			NoCommit:    !autoCommit,
@@ -75,12 +82,19 @@ func build(cmd *cobra.Command, args []string) {
 			AutoDebug:   autoDebug,
 		}
 
-		lib.MustApplyPlan(
-			lib.CurrentPlanId,
-			lib.CurrentBranch,
-			flags,
-			plan_exec.GetOnApplyExecFail(flags),
-		)
+		tellFlags := types.TellFlags{
+			AutoContext: tellAutoContext,
+			ExecEnabled: !noExec,
+			AutoApply:   tellAutoApply,
+		}
+
+		lib.MustApplyPlan(lib.ApplyPlanParams{
+			PlanId:     lib.CurrentPlanId,
+			Branch:     lib.CurrentBranch,
+			ApplyFlags: applyFlags,
+			TellFlags:  tellFlags,
+			OnExecFail: plan_exec.GetOnApplyExecFail(applyFlags, tellFlags),
+		})
 	} else {
 		fmt.Println()
 		term.PrintCmds("", "diff", "diff --ui", "apply", "reject", "log")

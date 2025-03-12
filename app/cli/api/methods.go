@@ -2,15 +2,16 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"gpt4cli/types"
+	"gpt4cli-cli/types"
 	"strings"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func (a *Api) CreateCliTrialSession() (string, *shared.ApiError) {
@@ -627,10 +628,10 @@ func (a *Api) ConnectPlan(planId, branch string, onStream types.OnStreamPlan) *s
 	return nil
 }
 
-func (a *Api) StopPlan(planId, branch string) *shared.ApiError {
+func (a *Api) StopPlan(ctx context.Context, planId, branch string) *shared.ApiError {
 	serverUrl := fmt.Sprintf("%s/plans/%s/%s/stop", GetApiHost(), planId, branch)
 
-	req, err := http.NewRequest(http.MethodDelete, serverUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, serverUrl, nil)
 	if err != nil {
 		return &shared.ApiError{Msg: fmt.Sprintf("error creating request: %v", err)}
 	}
@@ -646,7 +647,7 @@ func (a *Api) StopPlan(planId, branch string) *shared.ApiError {
 		apiErr := HandleApiError(resp, errorBody)
 		didRefresh, apiErr := refreshTokenIfNeeded(apiErr)
 		if didRefresh {
-			return a.StopPlan(planId, branch)
+			return a.StopPlan(ctx, planId, branch)
 		}
 		return apiErr
 	}
@@ -655,7 +656,20 @@ func (a *Api) StopPlan(planId, branch string) *shared.ApiError {
 }
 
 func (a *Api) GetCurrentPlanState(planId, branch string) (*shared.CurrentPlanState, *shared.ApiError) {
-	serverUrl := fmt.Sprintf("%s/plans/%s/%s/current_plan", GetApiHost(), planId, branch)
+	return a.getCurrentPlanState(planId, branch, "")
+}
+
+func (a *Api) GetCurrentPlanStateAtSha(planId, sha string) (*shared.CurrentPlanState, *shared.ApiError) {
+	return a.getCurrentPlanState(planId, "", sha)
+}
+
+func (a *Api) getCurrentPlanState(planId, branch, sha string) (*shared.CurrentPlanState, *shared.ApiError) {
+	var serverUrl string
+	if sha != "" {
+		serverUrl = fmt.Sprintf("%s/plans/%s/current_plan/%s", GetApiHost(), planId, sha)
+	} else {
+		serverUrl = fmt.Sprintf("%s/plans/%s/%s/current_plan", GetApiHost(), planId, branch)
+	}
 
 	resp, err := authenticatedFastClient.Get(serverUrl)
 	if err != nil {
@@ -668,7 +682,7 @@ func (a *Api) GetCurrentPlanState(planId, branch string) (*shared.CurrentPlanSta
 		apiErr := HandleApiError(resp, errorBody)
 		tokenRefreshed, apiErr := refreshTokenIfNeeded(apiErr)
 		if tokenRefreshed {
-			return a.GetCurrentPlanState(planId, branch)
+			return a.getCurrentPlanState(planId, branch, sha)
 		}
 		return nil, apiErr
 	}
@@ -2242,7 +2256,7 @@ func (a *Api) GetFileMap(req shared.GetFileMapRequest) (*shared.GetFileMapRespon
 		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error marshalling request: %v", err)}
 	}
 
-	resp, err := authenticatedFastClient.Post(serverUrl, "application/json", bytes.NewBuffer(reqBytes))
+	resp, err := authenticatedSlowClient.Post(serverUrl, "application/json", bytes.NewBuffer(reqBytes))
 	if err != nil {
 		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error sending request: %v", err)}
 	}
@@ -2295,15 +2309,24 @@ func (a *Api) GetContextBody(planId, branch, contextId string) (*shared.GetConte
 	return &respBody, nil
 }
 
-func (a *Api) AutoLoadContext(planId, branch string, req shared.LoadContextRequest) (*shared.LoadContextResponse, *shared.ApiError) {
+func (a *Api) AutoLoadContext(ctx context.Context, planId, branch string, req shared.LoadContextRequest) (*shared.LoadContextResponse, *shared.ApiError) {
 	serverUrl := fmt.Sprintf("%s/plans/%s/%s/auto_load_context", GetApiHost(), planId, branch)
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
 		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error marshalling request: %v", err)}
 	}
 
-	// use the slow client since we may be uploading relatively large files
-	resp, err := authenticatedSlowClient.Post(serverUrl, "application/json", bytes.NewBuffer(reqBytes))
+	// Create a new request with context
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", serverUrl, bytes.NewBuffer(reqBytes))
+	if err != nil {
+		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error creating request: %v", err)}
+	}
+
+	// Set the content type header
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	// Use the slow client since we may be uploading relatively large files
+	resp, err := authenticatedSlowClient.Do(httpReq)
 	if err != nil {
 		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error sending request: %v", err)}
 	}
@@ -2326,4 +2349,32 @@ func (a *Api) AutoLoadContext(planId, branch string, req shared.LoadContextReque
 	}
 
 	return &loadContextResponse, nil
+}
+
+func (a *Api) GetBuildStatus(planId, branch string) (*shared.GetBuildStatusResponse, *shared.ApiError) {
+	serverUrl := fmt.Sprintf("%s/plans/%s/%s/build_status", GetApiHost(), planId, branch)
+
+	resp, err := authenticatedFastClient.Get(serverUrl)
+	if err != nil {
+		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error sending request: %v", err)}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		errorBody, _ := io.ReadAll(resp.Body)
+		apiErr := HandleApiError(resp, errorBody)
+		tokenRefreshed, apiErr := refreshTokenIfNeeded(apiErr)
+		if tokenRefreshed {
+			return a.GetBuildStatus(planId, branch)
+		}
+		return nil, apiErr
+	}
+
+	var respBody shared.GetBuildStatusResponse
+	err = json.NewDecoder(resp.Body).Decode(&respBody)
+	if err != nil {
+		return nil, &shared.ApiError{Type: shared.ApiErrorTypeOther, Msg: fmt.Sprintf("error decoding response: %v", err)}
+	}
+
+	return &respBody, nil
 }

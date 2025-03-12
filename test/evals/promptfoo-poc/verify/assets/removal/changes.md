@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	"gpt4cli-shared"
 	"github.com/spf13/cobra"
 )
 
@@ -58,7 +58,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	"gpt4cli-shared"
 	"github.com/spf13/cobra"
 )
 

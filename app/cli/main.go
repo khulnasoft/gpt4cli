@@ -4,16 +4,19 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/cmd"
-	"gpt4cli/fs"
-	"gpt4cli/lib"
-	"gpt4cli/plan_exec"
-	"gpt4cli/term"
-	"gpt4cli/ui"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/cmd"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/plan_exec"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
+	"gpt4cli-cli/ui"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func init() {
@@ -36,23 +39,24 @@ func init() {
 			CurrentPlanId: lib.CurrentPlanId,
 			CurrentBranch: lib.CurrentBranch,
 			ApiKeys:       apiKeys,
-			CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
-				return lib.CheckOutdatedContextWithOutput(true, autoConfirm, maybeContexts)
+			CheckOutdatedContext: func(maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (bool, bool, error) {
+				return lib.CheckOutdatedContextWithOutput(true, autoConfirm, maybeContexts, projectPaths)
 			},
-		}, false)
+		}, types.BuildFlags{})
 	})
 
-	// set up a file logger
-	// TODO: log rotation
-
-	file, err := os.OpenFile(filepath.Join(fs.HomeGpt4cliDir, "gpt4cli.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		term.OutputErrorAndExit("Error opening log file: %v", err)
+	// set up a rotating file logger
+	logger := &lumberjack.Logger{
+		Filename:   filepath.Join(fs.HomeGpt4cliDir, "gpt4cli.log"),
+		MaxSize:    10,   // megabytes before rotation
+		MaxBackups: 3,    // number of backups to keep
+		MaxAge:     28,   // days to keep old logs
+		Compress:   true, // compress rotated files
 	}
 
-	// Set the output of the logger to the file
-	log.SetOutput(file)
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	// Set the output of the logger
+	log.SetOutput(logger)
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
 
 	// log.Println("Starting Gpt4cli - logging initialized")
 }

@@ -5,26 +5,40 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/fs"
-	"gpt4cli/term"
-	"gpt4cli/types"
-	"gpt4cli/url"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
+	"gpt4cli-cli/url"
 	"strconv"
 	"strings"
 	"sync"
 
+	shared "gpt4cli-shared"
+
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
-func CheckOutdatedContextWithOutput(quiet, autoConfirm bool, maybeContexts []*shared.Context) (contextOutdated, updated bool, err error) {
+func CheckOutdatedContextWithOutput(quiet, autoConfirm bool, maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (contextOutdated, updated bool, err error) {
 	if !quiet {
 		term.StartSpinner("🔬 Checking context...")
 	}
 
-	outdatedRes, err := CheckOutdatedContext(maybeContexts)
+	var contexts []*shared.Context
+
+	if maybeContexts != nil {
+		contexts = maybeContexts
+	} else {
+		res, err := api.Client.ListContext(CurrentPlanId, CurrentBranch)
+		if err != nil {
+			term.StopSpinner()
+			return false, false, fmt.Errorf("failed to list context: %s", err)
+		}
+		contexts = res
+	}
+
+	outdatedRes, err := CheckOutdatedContext(contexts, projectPaths)
 	if err != nil {
 		term.StopSpinner()
 		return false, false, fmt.Errorf("failed to check outdated context: %s", err)
@@ -93,12 +107,14 @@ func CheckOutdatedContextWithOutput(quiet, autoConfirm bool, maybeContexts []*sh
 			phrase = "has been"
 		}
 
-		term.StopSpinner()
+		if !quiet {
+			term.StopSpinner()
 
-		color.New(term.ColorHiCyan, color.Bold).Printf("%s in context %s modified 👇\n\n", msg, phrase)
+			color.New(term.ColorHiCyan, color.Bold).Printf("%s in context %s modified 👇\n\n", msg, phrase)
 
-		tableString := tableForContextOutdated(outdatedRes.UpdatedContexts, outdatedRes.TokenDiffsById)
-		fmt.Println(tableString)
+			tableString := tableForContextOutdated(outdatedRes.UpdatedContexts, outdatedRes.TokenDiffsById)
+			fmt.Println(tableString)
+		}
 	}
 
 	if len(outdatedRes.RemovedContexts) > 0 {
@@ -138,12 +154,14 @@ func CheckOutdatedContextWithOutput(quiet, autoConfirm bool, maybeContexts []*sh
 			phrase = "has been"
 		}
 
-		term.StopSpinner()
+		if !quiet {
+			term.StopSpinner()
 
-		color.New(term.ColorHiCyan, color.Bold).Printf("%s in context %s removed 👇\n\n", msg, phrase)
+			color.New(term.ColorHiCyan, color.Bold).Printf("%s in context %s removed 👇\n\n", msg, phrase)
 
-		tableString := tableForContextOutdated(outdatedRes.RemovedContexts, outdatedRes.TokenDiffsById)
-		fmt.Println(tableString)
+			tableString := tableForContextOutdated(outdatedRes.RemovedContexts, outdatedRes.TokenDiffsById)
+			fmt.Println(tableString)
+		}
 	}
 
 	confirmed := autoConfirm
@@ -157,7 +175,11 @@ func CheckOutdatedContextWithOutput(quiet, autoConfirm bool, maybeContexts []*sh
 	}
 
 	if confirmed {
-		err = UpdateContextWithOutput(maybeContexts)
+		_, err := UpdateContextWithOutput(UpdateContextParams{
+			Contexts:    contexts,
+			OutdatedRes: *outdatedRes,
+			Req:         outdatedRes.Req,
+		})
 		if err != nil {
 			return false, false, fmt.Errorf("error updating context: %v", err)
 		}
@@ -168,34 +190,102 @@ func CheckOutdatedContextWithOutput(quiet, autoConfirm bool, maybeContexts []*sh
 
 }
 
-func UpdateContextWithOutput(maybeUpdateContexts []*shared.Context) error {
+type UpdateContextParams struct {
+	Contexts    []*shared.Context
+	OutdatedRes types.ContextOutdatedResult
+	Req         map[string]*shared.UpdateContextParams
+}
+
+type UpdateContextResult struct {
+	HasConflicts bool
+	Msg          string
+}
+
+func UpdateContextWithOutput(params UpdateContextParams) (UpdateContextResult, error) {
 	term.StartSpinner("🔄 Updating context...")
 
-	updateRes, err := UpdateContext(maybeUpdateContexts)
+	updateRes, err := UpdateContext(params)
 
 	if err != nil {
-		return err
+		return UpdateContextResult{}, err
 	}
 
 	term.StopSpinner()
 
 	fmt.Println("✅ " + updateRes.Msg)
 
-	return nil
+	return updateRes, nil
 }
 
-func UpdateContext(maybeContexts []*shared.Context) (*types.ContextOutdatedResult, error) {
-	return checkOutdatedAndMaybeUpdateContext(true, maybeContexts)
+func UpdateContext(params UpdateContextParams) (UpdateContextResult, error) {
+	req := params.Req
+
+	var hasConflicts bool
+	var msg string
+
+	contextsById := map[string]*shared.Context{}
+	for _, context := range params.Contexts {
+		contextsById[context.Id] = context
+	}
+	deleteIds := map[string]bool{}
+	for _, context := range params.OutdatedRes.RemovedContexts {
+		deleteIds[context.Id] = true
+	}
+
+	filesToLoad := map[string]string{}
+	for id := range req {
+		context := contextsById[id]
+		if context.ContextType == shared.ContextFileType {
+			filesToLoad[context.FilePath] = context.Body
+		}
+	}
+	for id := range deleteIds {
+		context := contextsById[id]
+		if context.ContextType == shared.ContextFileType {
+			filesToLoad[context.FilePath] = ""
+		}
+	}
+
+	var err error
+	hasConflicts, err = checkContextConflicts(filesToLoad)
+	if err != nil {
+		return UpdateContextResult{}, fmt.Errorf("failed to check context conflicts: %v", err)
+	}
+
+	if len(req) > 0 {
+		// log.Println("updating context")
+		res, apiErr := api.Client.UpdateContext(CurrentPlanId, CurrentBranch, req)
+		if apiErr != nil {
+			return UpdateContextResult{}, fmt.Errorf("failed to update context: %v", apiErr)
+		}
+		// log.Println("updated context")
+		// log.Println("res.Msg", res.Msg)
+		msg = res.Msg
+	} else {
+	}
+
+	if len(deleteIds) > 0 {
+		res, apiErr := api.Client.DeleteContext(CurrentPlanId, CurrentBranch, shared.DeleteContextRequest{
+			Ids: deleteIds,
+		})
+		if apiErr != nil {
+			return UpdateContextResult{}, fmt.Errorf("failed to delete contexts: %v", apiErr)
+		}
+		msg += " " + res.Msg
+	}
+
+	return UpdateContextResult{
+		HasConflicts: hasConflicts,
+		Msg:          msg,
+	}, nil
 }
 
-func CheckOutdatedContext(maybeContexts []*shared.Context) (*types.ContextOutdatedResult, error) {
-	return checkOutdatedAndMaybeUpdateContext(false, maybeContexts)
+func CheckOutdatedContext(maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (*types.ContextOutdatedResult, error) {
+	return checkOutdatedAndMaybeUpdateContext(false, maybeContexts, projectPaths)
 }
 
-func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.Context) (*types.ContextOutdatedResult, error) {
+func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (*types.ContextOutdatedResult, error) {
 	var contexts []*shared.Context
-
-	// log.Println("Checking outdated context")
 
 	if maybeContexts == nil {
 		var apiErr *shared.ApiError
@@ -205,6 +295,11 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 		}
 	} else {
 		contexts = maybeContexts
+	}
+
+	totalTokens := 0
+	for _, context := range contexts {
+		totalTokens += context.NumTokens
 	}
 
 	var errs []error
@@ -223,24 +318,7 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 	contextsById := map[string]*shared.Context{}
 	deleteIds := map[string]bool{}
 
-	var paths *types.ProjectPaths
-	var hasDirectoryTreeWithIgnoredPaths bool
-
-	for _, context := range contexts {
-		if context.ContextType == shared.ContextDirectoryTreeType && !context.ForceSkipIgnore {
-			hasDirectoryTreeWithIgnoredPaths = true
-			break
-		}
-	}
-
-	if hasDirectoryTreeWithIgnoredPaths {
-		baseDir := fs.GetBaseDirForContexts(contexts)
-		var err error
-		paths, err = fs.GetProjectPaths(baseDir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get project paths: %v", err)
-		}
-	}
+	paths := projectPaths
 
 	for _, context := range contexts {
 		contextsById[context.Id] = context
@@ -279,11 +357,7 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 
 					body := string(fileContent)
 
-					numTokens, err := shared.GetNumTokens(body)
-					if err != nil {
-						errs = append(errs, fmt.Errorf("failed to get the number of tokens in the file %s: %v", context.FilePath, err))
-						return
-					}
+					numTokens := shared.GetNumTokensEstimate(body)
 					tokenDiffsById[context.Id] = numTokens - context.NumTokens
 
 					numFiles++
@@ -310,9 +384,16 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 					return
 				}
 
-				flattenedPaths, err := ParseInputPaths([]string{context.FilePath}, &types.LoadContextParams{
-					NamesOnly:       true,
-					ForceSkipIgnore: context.ForceSkipIgnore,
+				baseDir := fs.GetBaseDirForFilePaths([]string{context.FilePath})
+
+				flattenedPaths, err := ParseInputPaths(ParseInputPathsParams{
+					FileOrDirPaths: []string{context.FilePath},
+					BaseDir:        baseDir,
+					ProjectPaths:   paths,
+					LoadParams: &types.LoadContextParams{
+						NamesOnly:       true,
+						ForceSkipIgnore: context.ForceSkipIgnore,
+					},
 				})
 
 				mu.Lock()
@@ -345,11 +426,7 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 				sha := hex.EncodeToString(hash[:])
 
 				if sha != context.Sha {
-					numTokens, err := shared.GetNumTokens(body)
-					if err != nil {
-						errs = append(errs, fmt.Errorf("failed to get the number of tokens in the file %s: %v", context.FilePath, err))
-						return
-					}
+					numTokens := shared.GetNumTokensEstimate(body)
 					tokenDiffsById[context.Id] = numTokens - context.NumTokens
 
 					numTrees++
@@ -400,13 +477,13 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 
 				// Check if new files were added
 				baseDir := fs.GetBaseDirForFilePaths([]string{context.FilePath})
-				paths, err := fs.GetProjectPaths(baseDir)
-				if err != nil {
-					errs = append(errs, fmt.Errorf("failed to get project paths: %v", err))
-					return
-				}
 
-				flattenedPaths, err := ParseInputPaths([]string{context.FilePath}, &types.LoadContextParams{Recursive: true})
+				flattenedPaths, err := ParseInputPaths(ParseInputPathsParams{
+					FileOrDirPaths: []string{context.FilePath},
+					BaseDir:        baseDir,
+					ProjectPaths:   paths,
+					LoadParams:     &types.LoadContextParams{Recursive: true},
+				})
 				if err != nil {
 					errs = append(errs, fmt.Errorf("failed to get the directory tree %s: %v", context.FilePath, err))
 					return
@@ -439,19 +516,27 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 						hash := sha256.Sum256(bytes)
 						sha := hex.EncodeToString(hash[:])
 						updatedInputShas[path] = sha
+					} else {
 					}
 				}
 				// If any files changed, get new map
+
 				if len(updatedInputs) > 0 || len(removedMapPaths) > 0 {
-					// log.Println("updatedInputs", len(updatedInputs), "removedMapPaths", len(removedMapPaths))
-					// log.Println("updatedInputs:")
-					// for k := range updatedInputs {
-					// 	log.Println(k)
-					// }
-					// log.Println("removedMapPaths:")
-					// for k := range removedMapPaths {
-					// 	log.Println(k)
-					// }
+					// Check total map input size and paths before making API call
+					if len(updatedInputs) > shared.MaxContextMapPaths {
+						errs = append(errs, fmt.Errorf("total map paths limit exceeded (found %d, limit %d)", len(updatedInputs), shared.MaxContextMapPaths))
+						return
+					}
+
+					var totalMapSize int64
+					for _, input := range updatedInputs {
+						totalMapSize += int64(len(input))
+					}
+
+					if totalMapSize > shared.MaxContextMapInputSize {
+						errs = append(errs, fmt.Errorf("total map size limit exceeded (size %.2f MB, limit %d MB)", float64(totalMapSize)/1024/1024, int(shared.MaxContextMapInputSize)/1024/1024))
+						return
+					}
 
 					updatedParts := make(shared.FileMapBodies)
 					for k, v := range context.MapParts {
@@ -473,23 +558,18 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 							updatedParts[path] = body
 
 							prevTokens := context.MapTokens[path]
-							numTokens, err := shared.GetNumTokens(body)
-							if err != nil {
-								errs = append(errs, fmt.Errorf("failed to get the number of tokens in the file %s: %v", path, err))
-								return
+							numTokens := mapRes.MapBodies.TokenEstimateForPath(path)
+
+							if numTokens != prevTokens {
+								tokenDiffsById[context.Id] += numTokens - prevTokens
 							}
-
-							// fmt.Println("path", path, "numTokens", numTokens, "prevTokens", prevTokens)
-
-							tokenDiffsById[context.Id] += numTokens - prevTokens
 						}
-
-						// test this
 					}
 
 					if len(removedMapPaths) > 0 {
 						for _, path := range removedMapPaths {
 							delete(updatedParts, path)
+							tokenDiffsById[context.Id] -= context.MapTokens[path]
 						}
 					}
 
@@ -500,6 +580,8 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 						InputShas:       updatedInputShas,
 						RemovedMapPaths: removedMapPaths,
 					}
+
+				} else {
 				}
 			}(context)
 		} else if context.ContextType == shared.ContextURLType {
@@ -520,11 +602,7 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 				sha := hex.EncodeToString(hash[:])
 
 				if sha != context.Sha {
-					numTokens, err := shared.GetNumTokens(body)
-					if err != nil {
-						errs = append(errs, fmt.Errorf("failed to get the number of tokens in the file %s: %v", context.FilePath, err))
-						return
-					}
+					numTokens := shared.GetNumTokensEstimate(body)
 					tokenDiffsById[context.Id] = numTokens - context.NumTokens
 
 					numUrls++
@@ -566,6 +644,12 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 		return nil, fmt.Errorf("total context body size exceeds limit (size %.2f MB, limit %d MB)", float64(totalBodySize)/1024/1024, int(shared.MaxContextBodySize)/1024/1024)
 	}
 
+	var removedContexts []*shared.Context
+	for id := range deleteIds {
+		removedContexts = append(removedContexts, contextsById[id])
+	}
+
+	var outdatedRes types.ContextOutdatedResult
 	var msg string
 	var hasConflicts bool
 
@@ -574,46 +658,48 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 		return &types.ContextOutdatedResult{
 			Msg: "Context is up to date",
 		}, nil
-	} else if doUpdate {
-		filesToLoad := map[string]string{}
-		for id := range req {
-			context := contextsById[id]
-			if context.ContextType == shared.ContextFileType {
-				filesToLoad[context.FilePath] = context.Body
-			}
-		}
-		for id := range deleteIds {
-			context := contextsById[id]
-			if context.ContextType == shared.ContextFileType {
-				filesToLoad[context.FilePath] = ""
-			}
+	} else {
+
+		outdatedRes = types.ContextOutdatedResult{
+			UpdatedContexts: updatedContexts,
+			RemovedContexts: removedContexts,
+			TokenDiffsById:  tokenDiffsById,
+			NumFiles:        numFiles,
+			NumUrls:         numUrls,
+			NumTrees:        numTrees,
+			NumMaps:         numMaps,
+			NumFilesRemoved: numFilesRemoved,
+			NumTreesRemoved: numTreesRemoved,
+			Req:             req,
 		}
 
-		var err error
-		hasConflicts, err = checkContextConflicts(filesToLoad)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check context conflicts: %v", err)
-		}
+		if doUpdate {
 
-		if len(req) > 0 {
-			// log.Println("updating context")
-			res, apiErr := api.Client.UpdateContext(CurrentPlanId, CurrentBranch, req)
-			if apiErr != nil {
-				return nil, fmt.Errorf("failed to update context: %v", apiErr)
-			}
-			// log.Println("updated context")
-			// log.Println("res.Msg", res.Msg)
-			msg = res.Msg
-		}
-
-		if len(deleteIds) > 0 {
-			req, apiErr := api.Client.DeleteContext(CurrentPlanId, CurrentBranch, shared.DeleteContextRequest{
-				Ids: deleteIds,
+			res, err := UpdateContext(UpdateContextParams{
+				Contexts:    contexts,
+				OutdatedRes: outdatedRes,
+				Req:         req,
 			})
-			if apiErr != nil {
-				return nil, fmt.Errorf("failed to delete contexts: %v", apiErr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update context: %v", err)
 			}
-			msg += " " + req.Msg
+			hasConflicts = res.HasConflicts
+			msg = res.Msg
+			outdatedRes.Msg = msg
+		} else {
+			tokensDiff := 0
+			for _, diff := range tokenDiffsById {
+				tokensDiff += diff
+			}
+			total := totalTokens + tokensDiff
+			outdatedRes.Msg = shared.SummaryForUpdateContext(shared.SummaryForUpdateContextParams{
+				NumFiles:    numFiles,
+				NumTrees:    numTrees,
+				NumUrls:     numUrls,
+				NumMaps:     numMaps,
+				TokensDiff:  tokensDiff,
+				TotalTokens: total,
+			})
 		}
 	}
 
@@ -628,23 +714,7 @@ func checkOutdatedAndMaybeUpdateContext(doUpdate bool, maybeContexts []*shared.C
 		fmt.Println()
 	}
 
-	var removedContexts []*shared.Context
-	for id := range deleteIds {
-		removedContexts = append(removedContexts, contextsById[id])
-	}
-
-	return &types.ContextOutdatedResult{
-		Msg:             msg,
-		UpdatedContexts: updatedContexts,
-		RemovedContexts: removedContexts,
-		TokenDiffsById:  tokenDiffsById,
-		NumFiles:        numFiles,
-		NumUrls:         numUrls,
-		NumTrees:        numTrees,
-		NumMaps:         numMaps,
-		NumFilesRemoved: numFilesRemoved,
-		NumTreesRemoved: numTreesRemoved,
-	}, nil
+	return &outdatedRes, nil
 }
 
 func tableForContextOutdated(updatedContexts []*shared.Context, tokenDiffsById map[string]int) string {
@@ -660,7 +730,6 @@ func tableForContextOutdated(updatedContexts []*shared.Context, tokenDiffsById m
 	for _, context := range updatedContexts {
 		t, icon := context.TypeAndIcon()
 		diff := tokenDiffsById[context.Id]
-
 		diffStr := "+" + strconv.Itoa(diff)
 		tableColor := tablewriter.FgHiGreenColor
 

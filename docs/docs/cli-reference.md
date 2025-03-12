@@ -31,6 +31,45 @@ For help on a specific command, use:
 gpt4cli [command] --help
 ```
 
+## REPL
+
+The easiest way to use Gpt4cli is through the REPL. Start it in your project directory with:
+
+```bash
+gpt4cli
+```
+
+or for short:
+
+```bash
+g4c
+```
+
+### Flags
+
+The REPL has a few convenient flags you can use to start it with different modes, autonomy settings, and model packs. You can pass any of these to `gpt4cli` or `g4c` when starting the REPL.
+
+```
+  Mode
+    --chat, -c     Start in chat mode (for conversation without making changes)
+    --tell, -t     Start in tell mode (for implementation)
+
+  Autonomy
+    --no-auto      None → step-by-step, no automation
+    --basic        Basic → auto-continue plans, no other automation
+    --plus         Plus → auto-update context, smart context, auto-commit changes
+    --semi         Semi-Auto → auto-load context
+    --full         Full-Auto → auto-apply, auto-exec, auto-debug
+
+  Models
+    --daily        Daily driver pack (default models, balanced capability, cost, and speed)
+    --strong       Strong pack (more capable models, higher cost and slower)
+    --cheap        Cheap pack (less capable models, lower cost and faster)
+    --oss          Open source pack (open source models)
+```
+
+All commands listed below can be run in the REPL by prefixing them with a backslash (`\`), e.g. `\new`.
+
 ## Plans
 
 ### new
@@ -43,6 +82,26 @@ gpt4cli new -n new-plan # with name
 ```
 
 `--name/-n`: Name of the new plan. The name is generated automatically after first prompt if no name is specified on creation.
+
+`--context-dir/-d`: Base directory to load context from when auto-loading context is enabled. Defaults to `.` (current directory). Set a different directoy if you don't want all files to be included in the project map.
+
+`--no-auto`: Start the plan with auto-mode 'None' (step-by-step, no automation).
+
+`--basic`: Start the plan with auto-mode 'Basic' (auto-continue plans, no other automation).
+
+`--plus`: Start the plan with auto-mode 'Plus' (auto-update context, smart context, auto-commit changes).
+
+`--semi`: Start the plan with auto-mode 'Semi-Auto' (auto-load context).
+
+`--full`: Start the plan with auto-mode 'Full-Auto' (auto-apply, auto-exec, auto-debug).
+
+`--daily`: Start the plan with the daily driver model pack.
+
+`--strong`: Start the plan with the strong model pack.
+
+`--cheap`: Start the plan with the cheap model pack.
+
+`--oss`: Start the plan with the open source model pack.
 
 ### plans
 
@@ -84,19 +143,19 @@ With one argument, Gpt4cli selects a plan by name or by index in the `gpt4cli pl
 
 ### delete-plan
 
-Delete a plan by name or index.
+Delete a plan by name, index, range, pattern, or select from a list.
 
 ```bash
 gpt4cli delete-plan # select from a list of plans
 gpt4cli delete-plan some-plan # by name
 gpt4cli delete-plan 4 # by index in `gpt4cli plans`
-
+gpt4cli delete-plan 2-4 # by range of indices
+gpt4cli delete-plan 'docs-*' # by pattern
+gpt4cli delete-plan --all # delete all plans
 g4c dp # alias
 ```
 
-With no arguments, Gpt4cli prompts you with a list of plans to select from.
-
-With one argument, Gpt4cli deletes a plan by name or by index in the `gpt4cli plans` list.
+`--all/-a`: Delete all plans.
 
 ### rename
 
@@ -106,10 +165,6 @@ Rename the current plan.
 gpt4cli rename # prompt for new name
 gpt4cli rename new-name # set new name
 ```
-
-With no arguments, Gpt4cli prompts you for a new name.
-
-With one argument, Gpt4cli sets the new name.
 
 ### archive
 
@@ -122,10 +177,6 @@ gpt4cli archive 4 # by index in `gpt4cli plans`
 
 g4c arc # alias
 ```
-
-With no arguments, Gpt4cli prompts you with a list of plans to select from.
-
-With one argument, Gpt4cli archives a plan by name or by index in the `gpt4cli plans` list.
 
 ### unarchive
 
@@ -162,6 +213,8 @@ g4c l component.ts # alias
 
 `--tree`: Load directory tree layout with file names only.
 
+`--map`: Load file map of the given directory (function/method/class signatures, variable names, types, etc.)
+
 `--note/-n`: Load a note into context.
 
 `--force/-f`: Load files even when ignored by .gitignore or .gpt4cliignore.
@@ -186,10 +239,19 @@ Remove context by index, range, name, or glob.
 gpt4cli rm some-file.ts # by name
 gpt4cli rm app/**/*.ts # by glob pattern
 gpt4cli rm 4 # by index in `gpt4cli ls`
-plandx rm 2-4 # by range of indices
+gpt4cli rm 2-4 # by range of indices
 
 gpt4cli remove # longer alias
 gpt4cli unload # longer alias
+```
+
+### show
+
+Output context by name or index.
+
+```bash
+gpt4cli show some-file.ts # by name
+gpt4cli show 4 # by index in `gpt4cli ls`
 ```
 
 ### update
@@ -225,17 +287,29 @@ g4c t # alias
 
 `--file/-f`: File path containing prompt.
 
-`--stop/-s`: Stop after a single model response (don't auto-continue).
+`--stop/-s`: Stop after a single model response (don't auto-continue). Defaults to opposite of config value `auto-continue`.
 
-`--no-build/-n`: Don't build proposed changes into pending file updates.
+`--no-build/-n`: Don't build proposed changes into pending file updates. Defaults to opposite of config value `auto-build`.
 
 `--bg`: Run task in the background.
 
-`--yes/-y`: Automatically confirm context updates.
+`--auto-update-context`: Automatically confirm context updates. Defaults to config value `auto-update-context`.
 
-`--apply/-a`: Automatically apply changes (and confirm context updates).
+`--auto-load-context`: Automatically load context using project map. Defaults to config value `auto-load-context`.
 
-`--commit/-c`: Commit changes to git when `--apply/-a` is passed.
+`--smart-context`: Use smart context to only load the necessary file(s) for each step during implementation. Defaults to config value `smart-context`.
+
+`--no-exec`: Don't execute commands after successful apply. Defaults to opposite of config value `can-exec`.
+
+`--auto-exec`: Automatically execute commands after successful apply without confirmation. Defaults to config value `auto-exec`.
+
+`--debug`: Automatically execute and debug failing commands (optionally specify number of tries—default is 5). Defaults to config values of `auto-debug` and `auto-debug-tries`.
+
+`--apply/-a`: Automatically apply changes (and confirm context updates). Defaults to config value `auto-apply`.
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed. Defaults to config value `auto-commit`.
+
+`--skip-commit`: Don't commit changes to git. Defaults to opposite of config value `auto-commit`.
 
 ### continue
 
@@ -247,17 +321,29 @@ gpt4cli continue
 g4c c # alias
 ```
 
-`--stop/-s`: Stop after a single model response (don't auto-continue).
+`--stop/-s`: Stop after a single model response (don't auto-continue). Defaults to opposite of config value `auto-continue`.
 
-`--no-build/-n`: Don't build proposed changes into pending file updates.
+`--no-build/-n`: Don't build proposed changes into pending file updates. Defaults to opposite of config value `auto-build`.
 
 `--bg`: Run task in the background.
 
-`--yes/-y`: Automatically confirm context updates.
+`--auto-update-context`: Automatically confirm context updates. Defaults to config value `auto-update-context`.
 
-`--apply/-a`: Automatically apply changes (and confirm context updates).
+`--auto-load-context`: Automatically load context using project map. Defaults to config value `auto-load-context`.
 
-`--commit/-c`: Commit changes to git when `--apply/-a` is passed.
+`--smart-context`: Use smart context to only load the necessary file(s) for each step during implementation. Defaults to config value `smart-context`.
+
+`--no-exec`: Don't execute commands after successful apply. Defaults to opposite of config value `can-exec`.
+
+`--auto-exec`: Automatically execute commands after successful apply without confirmation. Defaults to config value `auto-exec`.
+
+`--debug`: Automatically execute and debug failing commands (optionally specify number of tries—default is 5). Defaults to config values of `auto-debug` and `auto-debug-tries`.
+
+`--apply/-a`: Automatically apply changes (and confirm context updates). Defaults to config value `auto-apply`.
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed. Defaults to config value `auto-commit`.
+
+`--skip-commit`: Don't commit changes to git. Defaults to opposite of config value `auto-commit`.
 
 ### build
 
@@ -270,11 +356,25 @@ g4c b # alias
 
 `--bg`: Build in the background.
 
-`--yes/-y`: Automatically confirm context updates.
+`--stop/-s`: Stop after a single model response (don't auto-continue). Defaults to opposite of config value `auto-continue`.
 
-`--apply/-a`: Automatically apply changes (and confirm context updates).
+`--no-build/-n`: Don't build proposed changes into pending file updates. Defaults to opposite of config value `auto-build`.
 
-`--commit/-c`: Commit changes to git when `--apply/-a` is passed.
+`--bg`: Run task in the background.
+
+`--auto-update-context`: Automatically confirm context updates. Defaults to config value `auto-update-context`.
+
+`--no-exec`: Don't execute commands after successful apply. Defaults to opposite of config value `can-exec`.
+
+`--auto-exec`: Automatically execute commands after successful apply without confirmation. Defaults to config value `auto-exec`.
+
+`--debug`: Automatically execute and debug failing commands (optionally specify number of tries—default is 5). Defaults to config values of `auto-debug` and `auto-debug-tries`.
+
+`--apply/-a`: Automatically apply changes (and confirm context updates). Defaults to config value `auto-apply`.
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed. Defaults to config value `auto-commit`.
+
+`--skip-commit`: Don't commit changes to git. Defaults to opposite of config value `auto-commit`.
 
 ### chat
 
@@ -282,16 +382,20 @@ Ask a question or chat without making any changes.
 
 ```bash
 gpt4cli chat "is it clear from the context how to add a new line chart?"
-g4c ct # alias
+g4c ch # alias
 ```
 
 `--file/-f`: File path containing prompt.
 
-`--yes/-y`: Automatically confirm context updates.
+`--bg`: Run task in the background.
+
+`--auto-update-context`: Automatically confirm context updates. Defaults to config value `auto-update-context`.
+
+`--auto-load-context`: Automatically load context using project map. Defaults to config value `auto-load-context`.
 
 ### debug
 
-Repeatedly run a command and auto-apply fixes until it succeeds. Defaults to 5 tries before giving up.
+Repeatedly run a command and automatically attempt fixes until it succeeds, rolling back changes on failure. Defaults to 5 tries before giving up.
 
 ```bash
 gpt4cli debug 'npm test' # try 5 times or until it succeeds
@@ -299,7 +403,9 @@ gpt4cli debug 10 'npm test' # try 10 times or until it succeeds
 g4c db 'npm test' # alias
 ```
 
-`--commit/-c`: Commit changes to git on each try.
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed. Defaults to config value `auto-commit`.
+
+`--skip-commit`: Don't commit changes to git. Defaults to opposite of config value `auto-commit`.
 
 ## Changes
 
@@ -316,15 +422,9 @@ gpt4cli diff --ui
 
 `--ui/-u`: Review pending changes in a local browser UI.
 
-`--side-by-side/-s`: Show diffs UI in side-by-side view rather than line-by-line.
+`--side-by-side/-s`: Show diffs UI in side-by-side view
 
-### changes
-
-Review pending changes in a TUI.
-
-```bash
-gpt4cli changes
-```
+`--line-by-line/-l`: Show diffs UI in line-by-line view
 
 ### apply
 
@@ -335,17 +435,28 @@ gpt4cli apply
 g4c ap # alias
 ```
 
-`--yes/-y`: Skip confirmation.
+`--bg`: Run task in the background.
 
-`--commit/-c`: Commit changes to git.
+`--auto-update-context`: Automatically confirm context updates. Defaults to config value `auto-update-context`.
 
-`--no-commit/-n`: Don't commit changes to git.
+`--no-exec`: Don't execute commands after successful apply. Defaults to opposite of config value `can-exec`.
+
+`--auto-exec`: Automatically execute commands after successful apply without confirmation. Defaults to config value `auto-exec`.
+
+`--debug`: Automatically execute and debug failing commands (optionally specify number of tries—default is 5). Defaults to config values of `auto-debug` and `auto-debug-tries`.
+
+`--commit/-c`: Commit changes to git when `--apply/-a` is passed. Defaults to config value `auto-commit`.
+
+`--skip-commit`: Don't commit changes to git. Defaults to opposite of config value `auto-commit`.
+
+`--full`: Apply the plan and debug in full auto mode.
 
 ### reject
 
 Reject pending changes to one or more project files.
 
 ```bash
+gpt4cli reject # select from a list of pending files to reject
 gpt4cli reject file.ts # one file
 gpt4cli reject file.ts another-file.ts # multiple files
 gpt4cli reject --all # all pending files
@@ -373,14 +484,10 @@ gpt4cli logs # alias
 Rewind to a previous state.
 
 ```bash
-gpt4cli rewind # rewind 1 step
+gpt4cli rewind # select from a list of previous states to rewind to
 gpt4cli rewind 3 # rewind 3 steps
 gpt4cli rewind a7c8d66 # rewind to a specific step from `gpt4cli log`
 ```
-
-With no arguments, Gpt4cli rewinds one step.
-
-With one argument, Gpt4cli rewinds the specified number of steps (if an integer is passed) or rewinds to the specified step (if a hash from `gpt4cli log` is passed).
 
 ### convo
 
@@ -436,12 +543,8 @@ gpt4cli delete-branch # select from a list of branches
 gpt4cli delete-branch some-branch # by name
 gpt4cli delete-branch 4 # by index in `gpt4cli branches`
 
-g4c db # alias
+g4c dlb # alias
 ```
-
-With no arguments, Gpt4cli prompts you with a list of branches to select from.
-
-With one argument, Gpt4cli deletes a branch by name or by index in the `gpt4cli branches` list.
 
 ## Background Tasks / Streams
 
@@ -461,13 +564,8 @@ Connect to an active plan stream.
 gpt4cli connect # select from a list of active streams
 gpt4cli connect a4de # by stream ID in `gpt4cli ps`
 gpt4cli connect some-plan main # by plan name and branch name
+g4c conn # alias
 ```
-
-With no arguments, Gpt4cli prompts you with a list of active streams to select from.
-
-With one argument, Gpt4cli connects to a stream by stream ID in the `gpt4cli ps` list.
-
-With two arguments, Gpt4cli connects to a stream by plan name and branch name.
 
 ### stop
 
@@ -479,11 +577,75 @@ gpt4cli stop a4de # by stream ID in `gpt4cli ps`
 gpt4cli stop some-plan main # by plan name and branch name
 ```
 
-With no arguments, Gpt4cli prompts you with a list of active streams to select from.
+## Configuration
 
-With one argument, Gpt4cli connects to a stream by stream ID in the `gpt4cli ps` list.
+### config
 
-With two arguments, Gpt4cli connects to a stream by plan name and branch name.
+Show current plan config. Output includes configuration settings for the plan, such as autonomy level, model settings, and other plan-specific options.
+
+```bash
+gpt4cli config
+```
+
+### config default
+
+Show the default config used for new plans. Output includes the default configuration settings that will be applied to newly created plans.
+
+```bash
+gpt4cli config default
+```
+
+### set-config
+
+Update configuration settings for the current plan.
+
+```bash
+gpt4cli set-config # select from a list of config options
+gpt4cli set-config auto-context true # set a specific config option
+```
+
+With no arguments, Gpt4cli prompts you to select from a list of config options.
+
+With arguments, allows you to directly set specific configuration options for the current plan.
+
+### set-config default
+
+Update the default configuration settings for new plans.
+
+```bash
+gpt4cli set-config default # select from a list of config options
+gpt4cli set-config default auto-mode basic # set a specific default config option
+```
+
+Works exactly the same as set-config above, but sets the default configuration for all new plans instead of only the current plan.
+
+### set-auto
+
+Update the auto-mode (autonomy level) for the current plan.
+
+```bash
+gpt4cli set-auto # select from a list of auto-modes
+gpt4cli set-auto full # set to full automation
+gpt4cli set-auto semi # set to semi-auto mode
+gpt4cli set-auto plus # set to plus mode
+gpt4cli set-auto basic # set to basic mode
+gpt4cli set-auto none # set to none (step-by-step, no automation)
+```
+
+With no arguments, Gpt4cli prompts you to select from a list of automation levels.
+
+With one argument, Gpt4cli sets the automation level directly to the specified value.
+
+### set-auto default
+
+Set the default auto-mode for new plans.
+
+```bash
+gpt4cli set-auto default # select from a list of auto-modes
+gpt4cli set-auto default basic # set default to basic mode
+```
+
+Works exactly the same as set-auto above, but sets the default automation level for all new plans instead of only the current plan.
 
 ## Models
 
@@ -591,6 +753,8 @@ Show all available model packs.
 gpt4cli model-packs
 ```
 
+`--custom`: Show available custom (user-created) model packs only.
+
 ### model-packs create
 
 Create a new custom model pack.
@@ -621,9 +785,9 @@ Sign in, accept an invite, or create an account.
 gpt4cli sign-in
 ```
 
-`--code/-c`: Sign in with a code from the Gpt4cli Cloud web UI.
+`--pin`: Sign in with a pin from the Gpt4cli Cloud web UI.
 
-Unless you pass `--code/-c` (from the Gpt4cli Cloud web UI), Gpt4cli will prompt you for all required information to sign in, accept an invite, or create an account.
+Unless you pass `--pin` (from the Gpt4cli Cloud web UI), Gpt4cli will prompt you for all required information to sign in, accept an invite, or create an account.
 
 ### invite
 
@@ -631,7 +795,7 @@ Invite a user to join your org.
 
 ```bash
 gpt4cli invite # prompt for email, name, and role
-gpt4cli invite name@domain.com 'Full Name' member # invite with email, name, and role 
+gpt4cli invite name@domain.com 'Full Name' member # invite with email, name, and role
 ```
 
 Users can be invited as `member`, `admin`, or `owner`.

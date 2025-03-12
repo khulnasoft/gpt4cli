@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func writeApiError(w http.ResponseWriter, apiErr shared.ApiError) {

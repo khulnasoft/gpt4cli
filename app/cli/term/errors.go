@@ -5,8 +5,9 @@ import (
 	"os"
 	"strings"
 
+	shared "gpt4cli-shared"
+
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 var openUnauthenticatedCloudURL func(msg, path string)
@@ -164,7 +165,7 @@ func HandleApiError(apiError *shared.ApiError) {
 	if apiError.Type == shared.ApiErrorTypeCloudInsufficientCredits {
 		if apiError.BillingError.HasBillingPermission {
 			StopSpinner()
-			OutputSimpleError("Insufficient credits.")
+			OutputSimpleError("Insufficient credits")
 			res, err := ConfirmYesNo("Go to billing settings?")
 			if err != nil {
 				OutputErrorAndExit("error getting confirmation")
@@ -176,7 +177,7 @@ func HandleApiError(apiError *shared.ApiError) {
 				os.Exit(0)
 			}
 		} else {
-			OutputErrorAndExit("Insufficient credits.")
+			OutputErrorAndExit("Insufficient credits")
 		}
 	}
 
