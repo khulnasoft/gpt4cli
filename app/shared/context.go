@@ -12,7 +12,7 @@ import (
 const (
 	MaxContextBodySize     = 10 * 1024 * 1024 // 10MB
 	MaxContextCount        = 500
-	MaxContextMapPaths     = 10000
+	MaxContextMapPaths     = 2000
 	MaxContextMapInputSize = 100 * 1024 * 1024      // 100MB
 	MaxTotalContextSize    = 2 * 1024 * 1024 * 1024 // 2GB
 )
@@ -83,7 +83,7 @@ func TableForLoadContext(contexts []*Context) string {
 
 	table.Render()
 
-	return tableString.String()
+	return strings.TrimSpace(tableString.String())
 }
 
 func MarkdownTableForLoadContext(contexts []*Context) string {
@@ -226,13 +226,22 @@ func SummaryForRemoveContext(contexts []*Context, previousTotalTokens int) strin
 	return fmt.Sprintf("Removed %d piece%s of context | removed → %d 🪙 | total → %d 🪙", len(contexts), suffix, removedTokens, totalTokens)
 }
 
-func SummaryForUpdateContext(updateRes *ContextUpdateResult) string {
-	numFiles := updateRes.NumFiles
-	numTrees := updateRes.NumTrees
-	numUrls := updateRes.NumUrls
-	numMaps := updateRes.NumMaps
-	tokensDiff := updateRes.TokensDiff
-	totalTokens := updateRes.TotalTokens
+type SummaryForUpdateContextParams struct {
+	NumFiles    int
+	NumTrees    int
+	NumUrls     int
+	NumMaps     int
+	TokensDiff  int
+	TotalTokens int
+}
+
+func SummaryForUpdateContext(params SummaryForUpdateContextParams) string {
+	numFiles := params.NumFiles
+	numTrees := params.NumTrees
+	numUrls := params.NumUrls
+	numMaps := params.NumMaps
+	tokensDiff := params.TokensDiff
+	totalTokens := params.TotalTokens
 
 	msg := "Updated"
 	var toAdd []string

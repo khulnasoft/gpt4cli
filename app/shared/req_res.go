@@ -14,7 +14,8 @@ type CreateEmailVerificationRequest struct {
 }
 
 type CreateEmailVerificationResponse struct {
-	HasAccount bool `json:"hasAccount"`
+	HasAccount  bool `json:"hasAccount"`
+	IsLocalMode bool `json:"isLocalMode"`
 }
 
 type VerifyEmailPinRequest struct {
@@ -40,11 +41,12 @@ type CreateAccountRequest struct {
 }
 
 type SessionResponse struct {
-	UserId   string `json:"userId"`
-	Token    string `json:"token"`
-	Email    string `json:"email"`
-	UserName string `json:"userName"`
-	Orgs     []*Org `json:"orgs"`
+	UserId      string `json:"userId"`
+	Token       string `json:"token"`
+	Email       string `json:"email"`
+	UserName    string `json:"userName"`
+	Orgs        []*Org `json:"orgs"`
+	IsLocalMode bool   `json:"isLocalMode"`
 }
 
 type CreateOrgRequest struct {
@@ -115,23 +117,26 @@ const (
 )
 
 type TellPlanRequest struct {
-	Prompt         string            `json:"prompt"`
-	BuildMode      BuildMode         `json:"buildMode"`
-	ConnectStream  bool              `json:"connectStream"`
-	AutoContinue   bool              `json:"autoContinue"`
-	IsUserContinue bool              `json:"isUserContinue"`
-	IsUserDebug    bool              `json:"isUserDebug"`
-	IsApplyDebug   bool              `json:"isApplyDebug"`
-	IsChatOnly     bool              `json:"isChatOnly"`
-	AutoContext    bool              `json:"autoContext"`
-	ExecEnabled    bool              `json:"execEnabled"`
-	OsDetails      string            `json:"osDetails"`
-	ApiKey         string            `json:"apiKey"`   // deprecated
-	Endpoint       string            `json:"endpoint"` // deprecated
-	ApiKeys        map[string]string `json:"apiKeys"`
-	OpenAIBase     string            `json:"openAIBase"`
-	OpenAIOrgId    string            `json:"openAIOrgId"`
-	ProjectPaths   map[string]bool   `json:"projectPaths"`
+	Prompt                 string            `json:"prompt"`
+	BuildMode              BuildMode         `json:"buildMode"`
+	ConnectStream          bool              `json:"connectStream"`
+	AutoContinue           bool              `json:"autoContinue"`
+	IsUserContinue         bool              `json:"isUserContinue"`
+	IsUserDebug            bool              `json:"isUserDebug"`
+	IsApplyDebug           bool              `json:"isApplyDebug"`
+	IsChatOnly             bool              `json:"isChatOnly"`
+	AutoContext            bool              `json:"autoContext"`
+	SmartContext           bool              `json:"smartContext"`
+	ExecEnabled            bool              `json:"execEnabled"`
+	OsDetails              string            `json:"osDetails"`
+	ApiKey                 string            `json:"apiKey"`   // deprecated
+	Endpoint               string            `json:"endpoint"` // deprecated
+	ApiKeys                map[string]string `json:"apiKeys"`
+	OpenAIBase             string            `json:"openAIBase"`
+	OpenAIOrgId            string            `json:"openAIOrgId"`
+	ProjectPaths           map[string]bool   `json:"projectPaths"`
+	IsImplementationOfChat bool              `json:"isImplementationOfChat"`
+	IsGitRepo              bool              `json:"isGitRepo"`
 }
 
 type BuildPlanRequest struct {
@@ -170,8 +175,8 @@ type LoadContextParams struct {
 	Body            string                `json:"body"`
 	ForceSkipIgnore bool                  `json:"forceSkipIgnore"`
 	ImageDetail     openai.ImageURLDetail `json:"imageDetail"`
-
-	MapInputs FileMapInputs `json:"mapInputs"`
+	AutoLoaded      bool                  `json:"autoLoaded"`
+	MapInputs       FileMapInputs         `json:"mapInputs"`
 
 	// For naming piped data
 	ApiKeys     map[string]string `json:"apiKeys"`
@@ -298,6 +303,11 @@ type ApplyPlanRequest struct {
 
 type RenamePlanRequest struct {
 	Name string `json:"name"`
+}
+
+type GetBuildStatusResponse struct {
+	BuiltFiles       map[string]bool `json:"builtFiles"`
+	IsBuildingByPath map[string]bool `json:"isBuildingByPath"`
 }
 
 // Cloud requests and responses

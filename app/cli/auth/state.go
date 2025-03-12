@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"gpt4cli/fs"
+	"gpt4cli-cli/fs"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 var Current *shared.ClientAuth

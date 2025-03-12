@@ -5,15 +5,31 @@ sidebar_label: Providers
 
 # Model Providers
 
-By default, Gpt4cli uses a mix of Anthropic models (via OpenRouter.ai) and OpenAI models, but you can use models from any provider that provides an OpenAI-compatible API, like [OpenRouter.ai](https://openrouter.ai/) (Anthropic, Gemini, and open source models), [Together.ai](https://together.ai) (open source models), [Replicate](https://replicate.com/), [Ollama](https://ollama.com/), and more.
+By default, Gpt4cli uses a mix of Anthropic, OpenAI, and Google models. OpenAI models call the OpenAI API directly, while all other models are called via [OpenRouter.ai](https://openrouter.ai/).
 
-## Limitations
+You can also use Gpt4cli with models from any provider that provides an OpenAI-compatible API, like the aforementioned [OpenRouter.ai](https://openrouter.ai/), [Together.ai](https://together.ai), [Replicate](https://replicate.com/), [Ollama](https://ollama.com/), and more.
 
-While you can use Gpt4cli with many different providers and models as described above, some crucial Gpt4cli [roles](./roles.md) require reliable function calling, which can still be a challenge to find in open source models. Additionally, Gpt4cli's prompts have mainly been written and tested against Anthropic and OpenAI models.  
+## Model Performance
 
-For these reasons, the default mix of Anthropic and OpenAI models will tend to provide the best experience, so it's recommended to start with the defaults.
+While you can use Gpt4cli with many different providers and models as described above, Gpt4cli's prompts have mainly been written and tested against the built-in models and model packs, so you should expect them to give the best results.
 
-In the future, we plan to offer prompts that are tailored for different models, and we also expect that other models and providers will catch up on the reliability front. Until then, **support for non-default models should generally be considered experimental.**
+## Built-in Models and Model Packs
+
+Gpt4cli provides a curated set of built-in models and model packs.
+
+You can see the list of available model packs with:
+
+```bash
+\model-packs # REPL
+gpt4cli model-packs # CLI
+```
+
+You can see the list of available models with:
+
+```bash
+\models available # REPL
+gpt4cli models available # CLI
+```
 
 ## Integrated Models
 
@@ -43,7 +59,7 @@ Once you've created an OpenAI account, [generate an API key here.](https://platf
 
 ## Other Providers
 
-Apart from those listed above,Gpt4cli can use models from any provider that is compatible with the OpenAI API, like Together.ai, Replicate, Ollama, and more. You'll need to create an account and generate an API key for any other providers you plan on using.
+Apart from those listed above, Gpt4cli can use models from any provider that is compatible with the OpenAI API, like Together.ai, Replicate, Ollama, and more. You'll need to create an account and generate an API key for any other providers you plan on using.
 
 ## Environment Variables
 

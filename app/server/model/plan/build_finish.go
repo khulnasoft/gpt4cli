@@ -5,11 +5,12 @@ import (
 	"log"
 	"net/http"
 	"gpt4cli-server/db"
+	"gpt4cli-server/hooks"
 	"gpt4cli-server/types"
 	"strings"
+	"time"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func (state *activeBuildStreamFileState) onFinishBuild() {
@@ -57,54 +58,20 @@ func (state *activeBuildStreamFileState) onFinishBuild() {
 
 	log.Println("Locking repo for finished build")
 
-	repoLockId, err := db.LockRepo(
-		db.LockRepoParams{
-			OrgId:       currentOrgId,
-			UserId:      currentUserId,
-			PlanId:      planId,
-			Branch:      branch,
-			PlanBuildId: build.Id,
-			Scope:       db.LockScopeWrite,
-			Ctx:         ap.Ctx,
-			CancelFn:    ap.CancelFn,
-		},
-	)
-
-	if err != nil {
-		log.Printf("Error locking repo for finished build: %v\n", err)
-		ap.StreamDoneCh <- &shared.ApiError{
-			Type:   shared.ApiErrorTypeOther,
-			Status: http.StatusInternalServerError,
-			Msg:    "Error locking repo for finished build: " + err.Error(),
-		}
-		return
-	}
-
-	log.Println("Locked repo for finished build")
-
-	err = func() error {
-		var err error
-		defer func() {
-			if err != nil {
-				log.Printf("Finish build error: %v\n", err)
-				err = db.GitClearUncommittedChanges(currentOrgId, planId)
-				if err != nil {
-					log.Printf("Error clearing uncommitted changes: %v\n", err)
-				}
-				log.Println("Cleared uncommitted changes")
-			}
-
-			err := db.DeleteRepoLock(repoLockId)
-			if err != nil {
-				log.Printf("Error unlocking repo: %v\n", err)
-			}
-
-			log.Println("Unlocked repo")
-		}()
-
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:       currentOrgId,
+		UserId:      currentUserId,
+		PlanId:      planId,
+		Branch:      branch,
+		PlanBuildId: build.Id,
+		Scope:       db.LockScopeWrite,
+		Ctx:         ap.Ctx,
+		CancelFn:    ap.CancelFn,
+		Reason:      "finish build",
+	}, func(repo *db.GitRepo) error {
 		// get plan descriptions
 		var planDescs []*db.ConvoMessageDescription
-		planDescs, err = db.GetConvoMessageDescriptions(currentOrgId, planId)
+		planDescs, err := db.GetConvoMessageDescriptions(currentOrgId, planId)
 		if err != nil {
 			log.Printf("Error getting pending build descriptions: %v\n", err)
 			return fmt.Errorf("error getting pending build descriptions: %v", err)
@@ -131,7 +98,7 @@ func (state *activeBuildStreamFileState) onFinishBuild() {
 
 		descErrCh := make(chan error)
 		for _, desc := range unbuiltDescs {
-			if len(desc.Files) > 0 {
+			if len(desc.Operations) > 0 {
 				desc.DidBuild = true
 				desc.BuildPathsInvalidated = map[string]bool{}
 			}
@@ -156,30 +123,28 @@ func (state *activeBuildStreamFileState) onFinishBuild() {
 			}
 		}
 
-		err = db.GitAddAndCommit(currentOrgId, planId, branch, currentPlan.PendingChangesSummaryForBuild())
+		err = repo.GitAddAndCommit(branch, currentPlan.PendingChangesSummaryForBuild())
 
 		if err != nil {
 			if strings.Contains(err.Error(), "nothing to commit") {
 				log.Println("Nothing to commit")
 				return nil
 			}
-
-			log.Printf("Error committing plan build: %v\n", err)
-			ap.StreamDoneCh <- &shared.ApiError{
-				Type:   shared.ApiErrorTypeOther,
-				Status: http.StatusInternalServerError,
-				Msg:    "Error committing plan build: " + err.Error(),
-			}
-			return err
+			return fmt.Errorf("error committing plan build: %v", err)
 		}
 
 		log.Println("Plan build committed")
 
 		return nil
-
-	}()
+	})
 
 	if err != nil {
+		log.Printf("Error finishing build: %v\n", err)
+		ap.StreamDoneCh <- &shared.ApiError{
+			Type:   shared.ApiErrorTypeOther,
+			Status: http.StatusInternalServerError,
+			Msg:    "Error finishing build: " + err.Error(),
+		}
 		return
 	}
 
@@ -190,11 +155,10 @@ func (state *activeBuildStreamFileState) onFinishBuild() {
 	}
 }
 
-func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanFileResult, updated string) {
+func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanFileResult) {
 	planId := fileState.plan.Id
 	branch := fileState.branch
 	currentOrgId := fileState.currentOrgId
-	currentUserId := fileState.currentUserId
 	build := fileState.build
 	activeBuild := fileState.activeBuild
 
@@ -207,132 +171,95 @@ func (fileState *activeBuildStreamFileState) onFinishBuildFile(planRes *db.PlanF
 
 	filePath := fileState.filePath
 
-	log.Println("onFinishBuildFile: " + filePath)
+	log.Printf("onFinishBuildFile: %s\n", filePath)
 
-	if planRes != nil {
-
-		repoLockId, err := db.LockRepo(
-			db.LockRepoParams{
-				OrgId:       currentOrgId,
-				UserId:      currentUserId,
-				PlanId:      planId,
-				Branch:      branch,
-				PlanBuildId: build.Id,
-				Scope:       db.LockScopeWrite,
-				Ctx:         activePlan.Ctx,
-				CancelFn:    activePlan.CancelFn,
-			},
-		)
-		if err != nil {
-			log.Printf("Error locking repo for build file: %v\n", err)
-			activePlan.StreamDoneCh <- &shared.ApiError{
-				Type:   shared.ApiErrorTypeOther,
-				Status: http.StatusInternalServerError,
-				Msg:    "Error locking repo for build file: " + err.Error(),
-			}
-			return
-		}
-
-		err = func() error {
-			var err error
-			defer func() {
-				if err != nil {
-					log.Printf("Error storing plan result: %v\n", err)
-					err = db.GitClearUncommittedChanges(currentOrgId, planId)
-					if err != nil {
-						log.Printf("Error clearing uncommitted changes: %v\n", err)
-					}
-				}
-
-				log.Println("Plan result stored successfully. Unlocking repo.")
-
-				err := db.DeleteRepoLock(repoLockId)
-				if err != nil {
-					log.Printf("Error unlocking repo: %v\n", err)
-				}
-			}()
-
-			log.Println("Storing plan result", planRes.Path)
-			spew.Dump(planRes)
-
-			err = db.StorePlanResult(planRes)
-			if err != nil {
-				log.Printf("Error storing plan result: %v\n", err)
-				activePlan.StreamDoneCh <- &shared.ApiError{
-					Type:   shared.ApiErrorTypeOther,
-					Status: http.StatusInternalServerError,
-					Msg:    "Error storing plan result: " + err.Error(),
-				}
-				return err
-			}
-
-			// log.Println("Plan result stored", planRes.Path)
-			return nil
-		}()
-
-		if err != nil {
-			return
-		}
-	}
-
-	activeBuild.Success = true
-
-	// if more builds are queued, start the next one regardless of whether this is a verification build or not, then return
-	if !activePlan.PathQueueEmpty(filePath) {
-		log.Printf("Processing next build for file %s\n", filePath)
-		activePlan := GetActivePlan(planId, branch)
-		if activePlan == nil {
-			log.Printf("Active plan not found for plan ID %s and branch %s\n", planId, branch)
-			return
-		}
-		queue := activePlan.BuildQueuesByPath[filePath]
-		var nextBuild *types.ActiveBuild
-		for _, build := range queue {
-			if !build.BuildFinished() {
-				nextBuild = build
-				break
-			}
-		}
-
-		if nextBuild != nil {
-			log.Println("Calling execPlanBuild for next build in queue")
-			go fileState.execPlanBuild(nextBuild)
+	if planRes == nil {
+		log.Println("onFinishBuildFile - planRes is nil")
+		activePlan.StreamDoneCh <- &shared.ApiError{
+			Type:   shared.ApiErrorTypeOther,
+			Status: http.StatusInternalServerError,
+			Msg:    "Error storing plan result: planRes is nil",
 		}
 		return
 	}
 
-	// otherwise:
-	// if this is a verification build or a new file build (new files aren't verified), check if the build is finished and call onFinishBuild if it is
-	// if this is not a verification build, trigger the verification build
-	if fileState.isNewFile {
-		buildFinished := false
+	err := db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:       currentOrgId,
+		UserId:      fileState.currentUserId,
+		PlanId:      planId,
+		Branch:      branch,
+		PlanBuildId: build.Id,
+		Scope:       db.LockScopeWrite,
+		Ctx:         activePlan.Ctx,
+		CancelFn:    activePlan.CancelFn,
+		Reason:      "store plan result",
+	}, func(repo *db.GitRepo) error {
+		log.Println("Storing plan result", planRes.Path)
 
-		UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
-			ap.BuiltFiles[filePath] = true
-			ap.IsBuildingByPath[filePath] = false
-			if ap.BuildFinished() {
-				buildFinished = true
-			}
-		})
-
-		log.Printf("Finished building file %s\n", filePath)
-
-		if buildFinished {
-			log.Println("Finished building plan, calling onFinishBuild")
-			fileState.onFinishBuild()
+		err := db.StorePlanResult(planRes)
+		if err != nil {
+			log.Printf("Error storing plan result: %v\n", err)
+			return err
 		}
-	} else {
-		log.Println("Triggering verification build")
 
-		go fileState.execPlanBuild(&types.ActiveBuild{
-			ReplyId:         activeBuild.ReplyId,
-			FileDescription: activeBuild.FileDescription,
-			FileContent:     activeBuild.FileContent,
-			Path:            activeBuild.Path,
-			Idx:             activeBuild.Idx,
-		})
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error storing plan build result: %v\n", err)
+		activePlan.StreamDoneCh <- &shared.ApiError{
+			Type:   shared.ApiErrorTypeOther,
+			Status: http.StatusInternalServerError,
+			Msg:    "Error storing plan build result: " + err.Error(),
+		}
+		return
 	}
 
+	fileState.builderRun.FinishedAt = time.Now()
+	hooks.ExecHook(hooks.DidFinishBuilderRun, hooks.HookParams{
+		Auth:                      fileState.auth,
+		Plan:                      fileState.plan,
+		DidFinishBuilderRunParams: &fileState.builderRun,
+	})
+
+	log.Printf("Finished building file %s - setting activeBuild.Success to true\n", filePath)
+	// log.Println(spew.Sdump(activeBuild))
+
+	fileState.onBuildProcessed(activeBuild)
+}
+
+func (fileState *activeBuildStreamFileState) onBuildProcessed(activeBuild *types.ActiveBuild) {
+	filePath := fileState.filePath
+	planId := fileState.plan.Id
+	branch := fileState.branch
+
+	activeBuild.Success = true
+
+	stillBuildingPath := fileState.buildNextInQueue()
+	if stillBuildingPath {
+		return
+	}
+
+	log.Printf("No more builds for path %s, checking if entire build is finished\n", filePath)
+
+	buildFinished := false
+
+	UpdateActivePlan(planId, branch, func(ap *types.ActivePlan) {
+		ap.BuiltFiles[filePath] = true
+		ap.IsBuildingByPath[filePath] = false
+		if ap.BuildFinished() {
+			buildFinished = true
+		}
+	})
+
+	log.Printf("Finished building file %s\n", filePath)
+
+	if buildFinished {
+		log.Println("Finished building plan, calling onFinishBuild")
+		fileState.onFinishBuild()
+	} else {
+		log.Println("Finished building file, but plan is not finished")
+	}
 }
 
 func (fileState *activeBuildStreamFileState) onBuildFileError(err error) {
@@ -341,7 +268,6 @@ func (fileState *activeBuildStreamFileState) onBuildFileError(err error) {
 	filePath := fileState.filePath
 	build := fileState.build
 	activeBuild := fileState.activeBuild
-	currentOrgId := fileState.currentOrgId
 
 	activePlan := GetActivePlan(planId, branch)
 
@@ -371,11 +297,34 @@ func (fileState *activeBuildStreamFileState) onBuildFileError(err error) {
 	if err != nil {
 		log.Printf("Error setting build error: %v\n", err)
 	}
+}
 
-	// rollback repo in case there are uncommitted builds
-	err = db.GitClearUncommittedChanges(currentOrgId, planId)
-
-	if err != nil {
-		log.Printf("Error clearing uncommitted changes: %v\n", err)
+func (fileState *activeBuildStreamFileState) buildNextInQueue() bool {
+	filePath := fileState.filePath
+	activePlan := GetActivePlan(fileState.plan.Id, fileState.branch)
+	if activePlan == nil {
+		log.Println("onFinishBuildFile - Active plan not found")
+		return false
 	}
+
+	// if more builds are queued, start the next one
+	if !activePlan.PathQueueEmpty(filePath) {
+		log.Printf("Processing next build for file %s\n", filePath)
+		queue := activePlan.BuildQueuesByPath[filePath]
+		var nextBuild *types.ActiveBuild
+		for _, build := range queue {
+			if !build.BuildFinished() {
+				nextBuild = build
+				break
+			}
+		}
+
+		if nextBuild != nil {
+			log.Println("Calling execPlanBuild for next build in queue")
+			go fileState.execPlanBuild(nextBuild)
+		}
+		return true
+	}
+
+	return false
 }

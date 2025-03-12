@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/term"
-	"gpt4cli/types"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"

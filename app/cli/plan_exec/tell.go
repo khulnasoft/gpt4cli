@@ -4,22 +4,25 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/fs"
-	"gpt4cli/stream"
-	streamtui "gpt4cli/stream_tui"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/stream"
+	streamtui "gpt4cli-cli/stream_tui"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func TellPlan(
 	params ExecParams,
 	prompt string,
-	flags TellFlags,
+	flags types.TellFlags,
 ) {
+
 	tellBg := flags.TellBg
 	tellStop := flags.TellStop
 	tellNoBuild := flags.TellNoBuild
@@ -27,9 +30,16 @@ func TellPlan(
 	isDebugCmd := flags.IsUserDebug
 	isChatOnly := flags.IsChatOnly
 	autoContext := flags.AutoContext
+	smartContext := flags.SmartContext
 	execEnabled := flags.ExecEnabled
-
+	autoApply := flags.AutoApply
+	isApplyDebug := flags.IsApplyDebug
+	isImplementationOfChat := flags.IsImplementationOfChat
 	done := make(chan struct{})
+
+	if prompt == "" && isImplementationOfChat {
+		prompt = "Go ahead with the plan based on what we've discussed so far."
+	}
 
 	outputPromptIfTell := func() {
 		if isUserContinue || prompt == "" {
@@ -45,6 +55,7 @@ func TellPlan(
 	}
 
 	term.StartSpinner("")
+	log.Println("Getting context (ListContext)")
 	contexts, apiErr := api.Client.ListContext(params.CurrentPlanId, params.CurrentBranch)
 
 	if apiErr != nil {
@@ -52,12 +63,28 @@ func TellPlan(
 		term.OutputErrorAndExit("Error getting context: %v", apiErr)
 	}
 
-	anyOutdated, didUpdate, err := params.CheckOutdatedContext(contexts)
+	log.Println("Got context (ListContext)")
+
+	log.Println("Getting project paths")
+
+	paths, err := fs.GetProjectPaths(fs.GetBaseDirForContexts(contexts))
+
+	if err != nil {
+		outputPromptIfTell()
+		term.OutputErrorAndExit("Error getting project paths: %v", err)
+	}
+
+	log.Println("Got project paths")
+
+	log.Println("Checking outdated context (CheckOutdatedContext)")
+	anyOutdated, didUpdate, err := params.CheckOutdatedContext(contexts, paths)
 
 	if err != nil {
 		outputPromptIfTell()
 		term.OutputErrorAndExit("Error checking outdated context: %v", err)
 	}
+
+	log.Println("Checked outdated context (CheckOutdatedContext)")
 
 	if anyOutdated && !didUpdate {
 		term.StopSpinner()
@@ -73,15 +100,6 @@ func TellPlan(
 		os.Exit(0)
 	}
 
-	term.StartSpinner("")
-	paths, err := fs.GetProjectPaths(fs.GetBaseDirForContexts(contexts))
-	term.StopSpinner()
-
-	if err != nil {
-		outputPromptIfTell()
-		term.OutputErrorAndExit("Error getting project paths: %v", err)
-	}
-
 	var fn func() bool
 	fn = func() bool {
 
@@ -92,11 +110,13 @@ func TellPlan(
 			buildMode = shared.BuildModeAuto
 		}
 
-		if isUserContinue {
-			term.StartSpinner("⚡️ Continuing plan...")
-		} else {
-			term.StartSpinner("💬 Sending prompt...")
-		}
+		// if isUserContinue {
+		// 	term.StartSpinner("⚡️ Continuing plan...")
+		// } else {
+		// 	term.StartSpinner("💬 Sending prompt...")
+		// }
+
+		term.StartSpinner("")
 
 		var legacyApiKey, openAIBase, openAIOrgId string
 
@@ -115,23 +135,28 @@ func TellPlan(
 			osDetails = term.GetOsDetails()
 		}
 
+		isGitRepo := fs.ProjectRootIsGitRepo()
+
 		apiErr := api.Client.TellPlan(params.CurrentPlanId, params.CurrentBranch, shared.TellPlanRequest{
-			Prompt:         prompt,
-			ConnectStream:  !tellBg,
-			AutoContinue:   !tellStop,
-			ProjectPaths:   paths.ActivePaths,
-			BuildMode:      buildMode,
-			IsUserContinue: isUserContinue,
-			IsUserDebug:    isDebugCmd,
-			IsChatOnly:     isChatOnly,
-			AutoContext:    autoContext,
-			ExecEnabled:    execEnabled,
-			OsDetails:      osDetails,
-			ApiKey:         legacyApiKey, // deprecated
-			Endpoint:       openAIBase,   // deprecated
-			ApiKeys:        params.ApiKeys,
-			OpenAIBase:     openAIBase,
-			OpenAIOrgId:    openAIOrgId,
+			Prompt:                 prompt,
+			ConnectStream:          !tellBg,
+			AutoContinue:           !tellStop,
+			ProjectPaths:           paths.ActivePaths,
+			BuildMode:              buildMode,
+			IsUserContinue:         isUserContinue,
+			IsUserDebug:            isDebugCmd,
+			IsChatOnly:             isChatOnly,
+			AutoContext:            autoContext,
+			SmartContext:           smartContext,
+			ExecEnabled:            execEnabled,
+			OsDetails:              osDetails,
+			ApiKey:                 legacyApiKey, // deprecated
+			Endpoint:               openAIBase,   // deprecated
+			ApiKeys:                params.ApiKeys,
+			OpenAIBase:             openAIBase,
+			OpenAIOrgId:            openAIOrgId,
+			IsImplementationOfChat: isImplementationOfChat,
+			IsGitRepo:              isGitRepo,
 		}, stream.OnStreamPlan)
 
 		term.StopSpinner()
@@ -175,14 +200,36 @@ func TellPlan(
 					term.OutputErrorAndExit("Error starting stream UI: %v", err)
 				}
 
-				fmt.Println()
+				if isChatOnly {
+					if !term.IsRepl {
+						term.PrintCmds("", "tell", "convo", "summary", "log")
+					}
+				} else if autoApply || isDebugCmd || isApplyDebug {
+					// do nothing, allow auto apply to run
+				} else {
+					diffs, apiErr := getDiffs(params)
+					numDiffs := len(diffs)
+					if apiErr != nil {
+						term.OutputErrorAndExit("Error getting plan diffs: %v", apiErr.Msg)
+						return
+					}
+					hasDiffs := numDiffs > 0
 
-				if tellStop && !isChatOnly {
-					term.PrintCmds("", "continue", "diff", "diff --ui", "apply", "log")
-				} else if !isDebugCmd && !isChatOnly {
-					term.PrintCmds("", "diff", "diff --ui", "apply", "log")
-				} else if isChatOnly {
-					term.PrintCmds("", "tell", "convo", "summary")
+					fmt.Println()
+
+					if tellStop && hasDiffs {
+						if hasDiffs {
+							// term.PrintCmds("", "continue", "diff", "diff --ui", "apply", "reject", "log")
+							showHotkeyMenu(diffs)
+							handleHotkey(diffs, params)
+						} else {
+							term.PrintCmds("", "continue", "log")
+						}
+					} else if hasDiffs {
+						// term.PrintCmds("", "diff", "diff --ui", "apply", "reject", "log")
+						showHotkeyMenu(diffs)
+						handleHotkey(diffs, params)
+					}
 				}
 				close(done)
 

@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"gpt4cli/term"
+	"gpt4cli-cli/term"
 	"regexp"
 	"strings"
 	"time"

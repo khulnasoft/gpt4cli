@@ -29,8 +29,8 @@ ENV GOARCH=amd64
 RUN rm -f gpt4cli-server && go build -o gpt4cli-server .
 
 # Set the port and expose it
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=8099
+EXPOSE 8099
 
 # Command to run the executable
 CMD ["./gpt4cli-server"]

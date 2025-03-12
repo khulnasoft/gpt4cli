@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
+	"github.com/jmoiron/sqlx"
 )
 
 func Authenticate(w http.ResponseWriter, r *http.Request, requireOrg bool) *types.ServerAuth {
@@ -93,7 +95,7 @@ func ClearAuthCookieIfBrowser(w http.ResponseWriter, r *http.Request) error {
 
 	var domain string
 	if os.Getenv("GOENV") == "production" {
-		domain = os.Getenv("APP_SUBDOMAIN") + ".gpt4cli.khulnasoft.com"
+		domain = os.Getenv("APP_SUBDOMAIN") + ".khulnasoft.com"
 	}
 
 	// Clear the authToken cookie
@@ -140,7 +142,7 @@ func ClearAccountFromCookies(w http.ResponseWriter, r *http.Request, userId stri
 	// Set the updated accounts cookie
 	var domain string
 	if os.Getenv("GOENV") == "production" {
-		domain = os.Getenv("APP_SUBDOMAIN") + ".gpt4cli.khulnasoft.com"
+		domain = os.Getenv("APP_SUBDOMAIN") + ".khulnasoft.com"
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "accounts",
@@ -196,7 +198,7 @@ func SetAuthCookieIfBrowser(w http.ResponseWriter, r *http.Request, user *db.Use
 
 	var domain string
 	if os.Getenv("GOENV") == "production" {
-		domain = os.Getenv("APP_SUBDOMAIN") + ".gpt4cli.khulnasoft.com"
+		domain = os.Getenv("APP_SUBDOMAIN") + ".khulnasoft.com"
 	}
 
 	cookie := &http.Cookie{
@@ -294,6 +296,8 @@ func ValidateAndSignIn(w http.ResponseWriter, r *http.Request, req shared.SignIn
 	var signInCodeOrgId string
 	var err error
 
+	isLocalMode := (os.Getenv("GOENV") == "development" && os.Getenv("LOCAL_MODE") == "1")
+
 	if req.IsSignInCode {
 		res, err := db.ValidateSignInCode(req.Pin)
 
@@ -330,67 +334,57 @@ func ValidateAndSignIn(w http.ResponseWriter, r *http.Request, req shared.SignIn
 			return nil, fmt.Errorf("not found")
 		}
 
-		emailVerificationId, err = db.ValidateEmailVerification(req.Email, req.Pin)
+		// only validate email in non-local mode
+		if !isLocalMode {
+			emailVerificationId, err = db.ValidateEmailVerification(req.Email, req.Pin)
 
-		if err != nil {
-			log.Printf("Error validating email verification: %v\n", err)
-			return nil, fmt.Errorf("error validating email verification: %v", err)
-		}
-
-		log.Println("Email verification successful")
-	}
-
-	// start a transaction
-	tx, err := db.Conn.Beginx()
-	if err != nil {
-		log.Printf("Error starting transaction: %v\n", err)
-		return nil, fmt.Errorf("error starting transaction: %v", err)
-	}
-
-	// Ensure that rollback is attempted in case of failure
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				log.Printf("transaction rollback error: %v\n", rbErr)
-			} else {
-				log.Println("transaction rolled back")
+			if err != nil {
+				log.Printf("Error validating email verification: %v\n", err)
+				return nil, fmt.Errorf("error validating email verification: %v", err)
 			}
+
+			log.Println("Email verification successful")
 		}
-	}()
-
-	// create auth token
-	token, authTokenId, err := db.CreateAuthToken(user.Id, tx)
-
-	if err != nil {
-		log.Printf("Error creating auth token: %v\n", err)
-		return nil, fmt.Errorf("error creating auth token: %v", err)
 	}
 
-	if req.IsSignInCode {
-		// update sign in code with auth token id
-		_, err = tx.Exec("UPDATE sign_in_codes SET auth_token_id = $1 WHERE id = $2", authTokenId, signInCodeId)
+	var token string
+	var authTokenId string
+
+	err = db.WithTx(r.Context(), "validate and sign in", func(tx *sqlx.Tx) error {
+		var err error
+		// create auth token
+		token, authTokenId, err = db.CreateAuthToken(user.Id, tx)
 
 		if err != nil {
-			log.Printf("Error updating sign in code: %v\n", err)
-			return nil, fmt.Errorf("error updating sign in code: %v", err)
-		}
-	} else {
-		// update email verification with user and auth token ids
-		_, err = tx.Exec("UPDATE email_verifications SET user_id = $1, auth_token_id = $2 WHERE id = $3", user.Id, authTokenId, emailVerificationId)
-
-		if err != nil {
-			log.Printf("Error updating email verification: %v\n", err)
-			return nil, fmt.Errorf("error updating email verification: %v", err)
+			log.Printf("Error creating auth token: %v\n", err)
+			return fmt.Errorf("error creating auth token: %v", err)
 		}
 
-		log.Println("Email verification updated")
-	}
+		if req.IsSignInCode {
+			// update sign in code with auth token id
+			_, err = tx.Exec("UPDATE sign_in_codes SET auth_token_id = $1 WHERE id = $2", authTokenId, signInCodeId)
 
-	// commit transaction
-	err = tx.Commit()
+			if err != nil {
+				log.Printf("Error updating sign in code: %v\n", err)
+				return fmt.Errorf("error updating sign in code: %v", err)
+			}
+		} else if !isLocalMode { // only update email verification in non-local mode
+			// update email verification with user and auth token ids
+			_, err = tx.Exec("UPDATE email_verifications SET user_id = $1, auth_token_id = $2 WHERE id = $3", user.Id, authTokenId, emailVerificationId)
+
+			if err != nil {
+				log.Printf("Error updating email verification: %v\n", err)
+				return fmt.Errorf("error updating email verification: %v", err)
+			}
+
+			log.Println("Email verification updated")
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		log.Printf("Error committing transaction: %v\n", err)
-		return nil, fmt.Errorf("error committing transaction: %v", err)
+		return nil, fmt.Errorf("error validating and signing in: %v", err)
 	}
 
 	// get orgs
@@ -433,11 +427,12 @@ func ValidateAndSignIn(w http.ResponseWriter, r *http.Request, req shared.SignIn
 	}
 
 	resp := shared.SessionResponse{
-		UserId:   user.Id,
-		Token:    token,
-		Email:    user.Email,
-		UserName: user.Name,
-		Orgs:     apiOrgs,
+		UserId:      user.Id,
+		Token:       token,
+		Email:       user.Email,
+		UserName:    user.Name,
+		Orgs:        apiOrgs,
+		IsLocalMode: os.Getenv("GOENV") == "development" && os.Getenv("LOCAL_MODE") == "1",
 	}
 
 	return &resp, nil
@@ -529,7 +524,7 @@ func execAuthenticate(w http.ResponseWriter, r *http.Request, requireOrg bool, r
 		if invite != nil {
 			log.Println("accepting invite")
 
-			err := db.AcceptInvite(invite, authToken.UserId)
+			err := db.AcceptInvite(r.Context(), invite, authToken.UserId)
 
 			if err != nil {
 				log.Printf("error accepting invite: %v\n", err)

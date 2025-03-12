@@ -5,184 +5,189 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"gpt4cli-server/hooks"
+	"net/http"
 	"gpt4cli-server/model"
 	"gpt4cli-server/model/prompts"
 	"gpt4cli-server/types"
+	"gpt4cli-server/utils"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	"github.com/sashabaranov/go-openai"
 )
 
-func (state *activeTellStreamState) execStatusShouldContinue(message string, ctx context.Context) (bool, bool, error) {
+// controls the number steps to spent trying to finish a single subtask
+// if a subtask is not finished in this number of steps, we'll give up and mark it done
+// necessary to prevent infinite loops
+const MaxPreviousMessages = 4
+
+type execStatusShouldContinueResult struct {
+	subtaskFinished bool
+}
+
+func (state *activeTellStreamState) execStatusShouldContinue(currentMessage string, ctx context.Context) (execStatusShouldContinueResult, *shared.ApiError) {
 	auth := state.auth
 	plan := state.plan
 	settings := state.settings
 	clients := state.clients
 	config := settings.ModelPack.ExecStatus
 
-	envVar := config.BaseModelConfig.ApiKeyEnvVar
-	client := clients[envVar]
-
-	log.Println("Checking if plan should continue based on response text")
-
+	// Check subtask completion
 	if state.currentSubtask != nil {
-		s := fmt.Sprintf("**%s** has been completed", state.currentSubtask.Title)
+		completionMarker := fmt.Sprintf("**%s** has been completed", state.currentSubtask.Title)
+		log.Printf("[ExecStatus] Checking for subtask completion marker: %q", completionMarker)
+		log.Printf("[ExecStatus] Current subtask: %q", state.currentSubtask.Title)
 
-		log.Println("Checking if message contains subtask completion")
-		log.Println(s)
-		log.Println("---")
-		log.Println(message)
+		if strings.Contains(currentMessage, completionMarker) {
+			log.Printf("[ExecStatus] ✓ Subtask completion marker found")
+			return execStatusShouldContinueResult{
+				subtaskFinished: true,
+			}, nil
 
-		if strings.Contains(message, s) {
-			log.Println("Subtask marked completed in message. Will continue")
-			return true, true, nil
+			// NOTE: tried using an LLM to verify "suspicious" subtask completions, but in practice led to too many extra LLM calls and disagreement cycles between agent roles (it's finished. no it's note! etc.)
+			// now just going back to trusting the completion marker... basically it's better to err on the side of marking tasks done.
+
+			// var potentialProblem bool
+
+			// if len(state.chunkProcessor.replyOperations) == 0 {
+			// 	log.Printf("[ExecStatus] ✗ Subtask completion marker found, but there are no operations to execute")
+			// 	potentialProblem = true
+			// } else {
+			// wroteToPaths := map[string]bool{}
+			// for _, op := range state.chunkProcessor.replyOperations {
+			// 	if op.Type == shared.OperationTypeFile {
+			// 		wroteToPaths[op.Path] = true
+			// 	}
+			// }
+
+			// for _, path := range state.currentSubtask.UsesFiles {
+			// 	if !wroteToPaths[path] {
+			// 		log.Printf("[ExecStatus] ✗ Subtask completion marker found, but the operations did not write to the file %q from the 'Uses' list", path)
+			// 		potentialProblem = true
+			// 		break
+			// 	}
+			// }
+			// }
+
+			// if !potentialProblem {
+			// 	log.Printf("[ExecStatus] ✓ Subtask completion marker found and no potential problem - will mark as completed")
+
+			// 	return execStatusShouldContinueResult{
+			// 		subtaskFinished: true,
+			// 	}, nil
+			// } else if state.currentSubtask.NumTries >= 1 {
+			// 	log.Printf("[ExecStatus] ✓ Subtask completion marker found, but the operations are questionable -- marking it done anyway since it's the second try and we can't risk an infinite loop")
+
+			// 	return execStatusShouldContinueResult{
+			// 		subtaskFinished: true,
+			// 	}, nil
+			// } else {
+			// 	log.Printf("[ExecStatus] ✗ Subtask completion marker found, but the operations are questionable -- will verify with LLM call")
+			// }
+		} else {
+			log.Printf("[ExecStatus] ✗ No subtask completion marker found in message")
+		}
+
+		log.Println("[ExecStatus] Current subtasks state:")
+		for i, task := range state.subtasks {
+			log.Printf("[ExecStatus] Task %d: %q (finished=%v)", i+1, task.Title, task.IsFinished)
 		}
 	}
 
 	log.Println("Checking if plan should continue based on exec status")
 
-	content := prompts.GetExecStatusShouldContinue(state.userPrompt, message)
+	fullSubtask := state.currentSubtask.Title
+	fullSubtask += "\n\n" + state.currentSubtask.Description
 
-	contentTokens, err := shared.GetNumTokens(content)
-
-	if err != nil {
-		log.Printf("Error getting num tokens for content: %v\n", err)
-		return false, false, fmt.Errorf("error getting num tokens for content: %v", err)
+	previousMessages := []string{}
+	for _, msg := range state.convo {
+		if msg.Subtask != nil && msg.Subtask.Title == state.currentSubtask.Title {
+			previousMessages = append(previousMessages, msg.Message)
+		}
 	}
 
-	numTokens := prompts.ExtraTokensPerRequest + prompts.ExtraTokensPerMessage + contentTokens
+	if len(previousMessages) >= MaxPreviousMessages {
+		log.Printf("[ExecStatus] ✗ Max previous messages reached - will mark as completed and move on to next subtask")
+		return execStatusShouldContinueResult{
+			subtaskFinished: true,
+		}, nil
+	}
 
-	_, apiErr := hooks.ExecHook(hooks.WillSendModelRequest, hooks.HookParams{
-		Auth: auth,
-		Plan: plan,
-		WillSendModelRequestParams: &hooks.WillSendModelRequestParams{
-			InputTokens:  numTokens,
-			OutputTokens: shared.AvailableModelsByName[config.BaseModelConfig.ModelName].DefaultReservedOutputTokens,
-			ModelName:    config.BaseModelConfig.ModelName,
-		},
+	prompt := prompts.GetExecStatusFinishedSubtask(prompts.GetExecStatusFinishedSubtaskParams{
+		UserPrompt:                 state.userPrompt,
+		CurrentSubtask:             fullSubtask,
+		CurrentMessage:             currentMessage,
+		PreviousMessages:           previousMessages,
+		PreferredModelOutputFormat: config.BaseModelConfig.PreferredModelOutputFormat,
 	})
-	if apiErr != nil {
-		return false, false, fmt.Errorf("error executing hook: %v", apiErr)
-	}
 
-	messages := []openai.ChatCompletionMessage{
+	messages := []types.ExtendedChatMessage{
 		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: content,
-		},
-	}
-
-	log.Println("Calling model to check if plan should continue")
-
-	// log.Println("messages:")
-	// log.Println(spew.Sdump(messages))
-
-	var responseFormat *openai.ChatCompletionResponseFormat
-	if config.BaseModelConfig.HasJsonResponseMode {
-		responseFormat = &openai.ChatCompletionResponseFormat{Type: "json_object"}
-	}
-
-	resp, err := model.CreateChatCompletionWithRetries(
-		client,
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: config.BaseModelConfig.ModelName,
-			Tools: []openai.Tool{
+			Role: openai.ChatMessageRoleSystem,
+			Content: []types.ExtendedChatMessagePart{
 				{
-					Type:     "function",
-					Function: &prompts.ShouldAutoContinueFn,
+					Type: openai.ChatMessagePartTypeText,
+					Text: prompt,
 				},
 			},
-			ToolChoice: openai.ToolChoice{
-				Type: "function",
-				Function: openai.ToolFunction{
-					Name: prompts.ShouldAutoContinueFn.Name,
-				},
-			},
-			Messages:       messages,
-			ResponseFormat: responseFormat,
-			Temperature:    config.Temperature,
-			TopP:           config.TopP,
 		},
-	)
-
-	if err != nil {
-		log.Printf("Error during plan exec status check model call: %v\n", err)
-		// return false, fmt.Errorf("error during plan exec status check model call: %v", err)
-
-		// Instead of erroring out, just don't continue the plan
-		return false, false, nil
 	}
 
-	var strRes string
-	var res types.ExecStatusResponse
-
-	for _, choice := range resp.Choices {
-		if len(choice.Message.ToolCalls) == 1 &&
-			choice.Message.ToolCalls[0].Function.Name == prompts.ShouldAutoContinueFn.Name {
-			fnCall := choice.Message.ToolCalls[0].Function
-			strRes = fnCall.Arguments
-			break
-		}
-	}
-
-	var inputTokens int
-	var outputTokens int
-	if resp.Usage.CompletionTokens > 0 {
-		inputTokens = resp.Usage.PromptTokens
-		outputTokens = resp.Usage.CompletionTokens
-	} else {
-		inputTokens = numTokens
-		outputTokens, err = shared.GetNumTokens(strRes)
-
-		if err != nil {
-			return false, false, fmt.Errorf("error getting num tokens for res: %v", err)
-		}
-	}
-
-	_, apiErr = hooks.ExecHook(hooks.DidSendModelRequest, hooks.HookParams{
-		Auth: auth,
-		Plan: plan,
-		DidSendModelRequestParams: &hooks.DidSendModelRequestParams{
-			InputTokens:   inputTokens,
-			OutputTokens:  outputTokens,
-			ModelName:     config.BaseModelConfig.ModelName,
-			ModelProvider: config.BaseModelConfig.Provider,
-			ModelPackName: settings.ModelPack.Name,
-			ModelRole:     shared.ModelRolePlanSummary,
-			Purpose:       "Evaluate if plan should auto-continue",
-		},
+	modelRes, err := model.ModelRequest(ctx, model.ModelRequestParams{
+		Clients:        clients,
+		Auth:           auth,
+		Plan:           plan,
+		ModelConfig:    &config,
+		Purpose:        "Check if task finished",
+		Messages:       messages,
+		ModelStreamId:  state.modelStreamId,
+		ConvoMessageId: state.replyId,
 	})
 
-	if apiErr != nil {
-		return false, false, fmt.Errorf("error executing hook: %v", apiErr)
-	}
-
-	if strRes == "" {
-		log.Println("No shouldAutoContinue function call found in response")
-		log.Println(spew.Sdump(resp))
-
-		// return false, fmt.Errorf("no shouldAutoContinue function call found in response")
-
-		// Instead of erroring out, just don't continue the plan
-		return false, false, nil
-	}
-
-	err = json.Unmarshal([]byte(strRes), &res)
 	if err != nil {
-		log.Printf("Error unmarshalling plan exec status response: %v\n", err)
-
-		// return false, fmt.Errorf("error unmarshalling plan exec status response: %v", err)
-
-		// Instead of erroring out, just don't continue the plan
-		return false, false, nil
+		log.Printf("[ExecStatus] Error in model call: %v", err)
+		return execStatusShouldContinueResult{}, nil
 	}
 
-	log.Println("Plan exec status response:")
-	log.Println(spew.Sdump(res))
+	content := modelRes.Content
 
-	return res.SubtaskFinished, res.ShouldContinue, nil
+	var reasoning string
+	var subtaskFinished bool
+
+	if config.BaseModelConfig.PreferredModelOutputFormat == shared.ModelOutputFormatXml {
+		reasoning = utils.GetXMLContent(content, "reasoning")
+		subtaskFinishedStr := utils.GetXMLContent(content, "subtaskFinished")
+		subtaskFinished = subtaskFinishedStr == "true"
+
+		if reasoning == "" || subtaskFinishedStr == "" {
+			return execStatusShouldContinueResult{}, &shared.ApiError{
+				Type:   shared.ApiErrorTypeOther,
+				Status: http.StatusInternalServerError,
+				Msg:    "Missing required XML tags in response",
+			}
+		}
+	} else {
+
+		if content == "" {
+			log.Printf("[ExecStatus] No function response found in model output")
+			return execStatusShouldContinueResult{}, nil
+		}
+
+		var res types.ExecStatusResponse
+		if err := json.Unmarshal([]byte(content), &res); err != nil {
+			log.Printf("[ExecStatus] Failed to parse response: %v", err)
+			return execStatusShouldContinueResult{}, nil
+		}
+
+		reasoning = res.Reasoning
+		subtaskFinished = res.SubtaskFinished
+	}
+
+	log.Printf("[ExecStatus] Decision: subtaskFinished=%v, reasoning=%v",
+		subtaskFinished, reasoning)
+
+	return execStatusShouldContinueResult{
+		subtaskFinished: subtaskFinished,
+	}, nil
 }

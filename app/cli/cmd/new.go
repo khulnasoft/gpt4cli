@@ -3,14 +3,15 @@ package cmd
 import (
 	"fmt"
 
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/term"
-	"gpt4cli/types"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,8 @@ func init() {
 	RootCmd.AddCommand(newCmd)
 	newCmd.Flags().StringVarP(&name, "name", "n", "", "Name of the new plan")
 	newCmd.Flags().StringVar(&contextBaseDir, "context-dir", ".", "Base directory to auto-load context from")
+
+	AddNewPlanFlags(newCmd)
 }
 
 func new(cmd *cobra.Command, args []string) {
@@ -77,6 +80,11 @@ func new(cmd *cobra.Command, args []string) {
 		term.OutputErrorAndExit("Error setting current plan: %v", err)
 	}
 
+	err = lib.WriteCurrentBranch("main")
+	if err != nil {
+		term.OutputErrorAndExit("Error setting current branch: %v", err)
+	}
+
 	if name == "" {
 		name = "draft"
 	}
@@ -84,7 +92,11 @@ func new(cmd *cobra.Command, args []string) {
 	term.StopSpinner()
 
 	fmt.Printf("✅ Started new plan %s and set it to current plan\n", color.New(color.Bold, term.ColorHiGreen).Sprint(name))
-	fmt.Println("⚙️  Using default config")
+	fmt.Printf("⚙️  Using default config\n")
+
+	resolveAutoMode(config)
+
+	resolveModelPack()
 
 	// autoModeLabel := shared.ConfigSettingsByKey["automode"].KeyToLabel(string(config.AutoMode))
 	// fmt.Println("⚡️ Auto-mode:", autoModeLabel)
@@ -100,17 +112,23 @@ func new(cmd *cobra.Command, args []string) {
 		lib.MustLoadContext([]string{baseDir}, &types.LoadContextParams{
 			DefsOnly:          true,
 			SkipIgnoreWarning: true,
+			AutoLoaded:        true,
 		})
 	} else {
 		fmt.Println()
 	}
 
-	cmds := []string{"tell", "chat", "plans", "current", "config"}
+	var cmds []string
+	if term.IsRepl {
+		cmds = []string{"config", "plans", "cd", "models"}
+	} else {
+		cmds = []string{"tell", "chat", "config"}
+	}
 
 	if !config.AutoLoadContext {
 		cmds = append([]string{"load"}, cmds...)
 	}
 
+	fmt.Println()
 	term.PrintCmds("", cmds...)
-
 }

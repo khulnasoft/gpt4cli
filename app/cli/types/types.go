@@ -1,7 +1,8 @@
 package types
 
 import (
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -13,6 +14,7 @@ type LoadContextParams struct {
 	ImageDetail       openai.ImageURLDetail
 	DefsOnly          bool
 	SkipIgnoreWarning bool
+	AutoLoaded        bool
 }
 
 type ContextOutdatedResult struct {
@@ -26,6 +28,7 @@ type ContextOutdatedResult struct {
 	NumMaps         int
 	NumFilesRemoved int
 	NumTreesRemoved int
+	Req             map[string]*shared.UpdateContextParams
 }
 
 const (

@@ -1,15 +1,18 @@
 package streamtui
 
 import (
+	"context"
 	"log"
+	"sync"
 	"time"
+
+	shared "gpt4cli-shared"
 
 	bubbleKey "github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 const (
@@ -29,6 +32,8 @@ var missingFileSelectOpts = []string{
 	MissingFileSkipLabel,
 	MissingFileOverwriteLabel,
 }
+
+var stateMu sync.RWMutex
 
 type streamUIModel struct {
 	buildOnly bool
@@ -74,6 +79,11 @@ type streamUIModel struct {
 	apiErr *shared.ApiError
 
 	updateDebouncer *UpdateDebouncer
+
+	autoLoadContextCancelFn context.CancelFunc
+
+	buildViewCollapsed bool
+	userExpandedBuild  bool
 }
 
 type keymap = struct {
@@ -91,10 +101,20 @@ type keymap = struct {
 }
 
 func (m streamUIModel) Init() tea.Cmd {
+	log.Println("Model Init start")
 	m.mainViewport.MouseWheelEnabled = true
+	return tea.Batch(
+		m.Tick(),
+		m.pollBuildStatus(),
+	)
+}
 
-	// start spinner
-	return m.Tick()
+type buildStatusPollMsg time.Time
+
+func (m streamUIModel) pollBuildStatus() tea.Cmd {
+	return tea.Every(5*time.Second, func(t time.Time) tea.Msg {
+		return buildStatusPollMsg(t)
+	})
 }
 
 func initialModel(prestartReply, prompt string, buildOnly bool) *streamUIModel {
@@ -108,9 +128,10 @@ func initialModel(prestartReply, prompt string, buildOnly bool) *streamUIModel {
 	buildSpinner.Spinner = spinner.MiniDot
 
 	initialState := streamUIModel{
-		buildOnly: buildOnly,
-		prompt:    prompt,
-		reply:     prestartReply,
+		buildOnly:          buildOnly,
+		buildViewCollapsed: false,
+		prompt:             prompt,
+		reply:              prestartReply,
 		keymap: keymap{
 			quit: bubbleKey.NewBinding(
 				bubbleKey.WithKeys("b", "ctrl+c"),
@@ -191,5 +212,19 @@ func (m streamUIModel) Tick() tea.Cmd {
 
 func (m *streamUIModel) cleanup() {
 	log.Println("Cleaning up stream UI model")
-	m.sharedTicker.Stop()
+	m.updateState(func() {
+		m.sharedTicker.Stop()
+	})
+}
+
+func (m *streamUIModel) readState() streamUIModel {
+	stateMu.RLock()
+	defer stateMu.RUnlock()
+	return *m
+}
+
+func (m *streamUIModel) updateState(updateFn func()) {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	updateFn()
 }

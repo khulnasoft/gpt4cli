@@ -13,7 +13,7 @@ This is an overview of all the environment variables that can be used with Gpt4c
 
 ```bash
 GPT4CLI_ENV=development # Set this to 'development' to default to the local development server instead of Gpt4cli Cloud when working on Gpt4cli itself.
-GPT4CLI_API_HOST= # Defaults to 'http://localhost:8080' if GPT4CLI_ENV is development, otherwise it's 'https://api.gpt4cli.khulnasoft.com'—override this to use a different host.
+GPT4CLI_API_HOST= # Defaults to 'http://localhost:8099' if GPT4CLI_ENV is development, otherwise it's 'https://api.khulnasoft.com'—override this to use a different host.
 ```
 
 ### LLM Providers
@@ -21,8 +21,6 @@ GPT4CLI_API_HOST= # Defaults to 'http://localhost:8080' if GPT4CLI_ENV is develo
 ```bash
 OPENAI_API_KEY= # Your OpenAI key (if self-hosting or using BYO API Key mode with Gpt4cli Cloud)
 OPENROUTER_API_KEY= # Your OpenRouter.ai API key (if self-hosting or using BYO API Key mode with Gpt4cli Cloud)
-TOGETHER_API_KEY = # Your Together.ai API key (if self-hosting or using BYO API Key mode with Gpt4cli Cloud)
-# etc.
 
 OPENAI_API_BASE= # Your OpenAI server, such as http://localhost:1234/v1 Defaults to empty.
 OPENAI_ORG_ID= # Your OpenAI organization ID. Defaults to empty.
@@ -48,7 +46,7 @@ GOPATH= # This should be already set to your Go folder if you've installed Golan
 
 ## Server
 
-Check out the [Self-Hosting Guide](./hosting/self-hosting.md) for more details.
+Check out the [Self-Hosting Guide](./hosting/self-hosting/local-mode-quickstart.md) for more details.
 
 ### General
 
@@ -56,7 +54,7 @@ Check out the [Self-Hosting Guide](./hosting/self-hosting.md) for more details.
 GOENV=development # Whether to run in development or production mode. Must be 'development' or 'production'
 GPT4CLI_BASE_DIR= # The base directory to read and write files. Defaults to '$HOME/gpt4cli-server' in development mode, '/gpt4cli-server' in production.
 API_HOST= # The host the API server listens on. Defaults to 'http://localhost:$PORT'. In production mode, should be a host like 'https://api.your-domain.ai'.
-PORT=8080 # The port the server listens on. Defaults to 8080.
+PORT=8099 # The port the server listens on. Defaults to 8099.
 ```
 
 ### docker-compose
@@ -65,7 +63,6 @@ For self-hosting with docker-compose, default environment variables are set in `
 
 ```bash
 GPT4CLI_DATA_DIR=/var/lib/gpt4cli/data # When using docker-compose, this is the directory *on your machine* that the Gpt4cli server will use to store data—it will be mounted to the Docker container as a volume.
-PGDATA_DIR=/var/lib/postgresql/data # Where PostgreSQL should store its data.
 
 # Database Credentials
 POSTGRES_DATABASE=gpt4cli # Your postgres database.

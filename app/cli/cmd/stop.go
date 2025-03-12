@@ -1,11 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
 
 	"github.com/spf13/cobra"
 )
@@ -37,7 +38,7 @@ func stop(cmd *cobra.Command, args []string) {
 	}
 
 	term.StartSpinner("")
-	apiErr := api.Client.StopPlan(planId, branch)
+	apiErr := api.Client.StopPlan(context.Background(), planId, branch)
 	term.StopSpinner()
 
 	if apiErr != nil {

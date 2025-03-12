@@ -1,11 +1,13 @@
 package cmd
 
 import (
-	"gpt4cli/auth"
-	"gpt4cli/term"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/term"
 
 	"github.com/spf13/cobra"
 )
+
+var pin string
 
 var signInCmd = &cobra.Command{
 	Use:   "sign-in",
@@ -17,17 +19,12 @@ var signInCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(signInCmd)
 
-	signInCmd.Flags().String("code", "", "Sign in code from the Gpt4cli web UI")
+	signInCmd.Flags().StringVar(&pin, "pin", "", "Sign in with a pin from the Gpt4cli Cloud web UI")
 }
 
 func signIn(cmd *cobra.Command, args []string) {
-	code, err := cmd.Flags().GetString("code")
-	if err != nil {
-		term.OutputErrorAndExit("Error getting code: %v", err)
-	}
-
-	if code != "" {
-		err = auth.SignInWithCode(code, "")
+	if pin != "" {
+		err := auth.SignInWithCode(pin, "")
 
 		if err != nil {
 			term.OutputErrorAndExit("Error signing in: %v", err)
@@ -36,7 +33,7 @@ func signIn(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	err = auth.SelectOrSignInOrCreate()
+	err := auth.SelectOrSignInOrCreate()
 
 	if err != nil {
 		term.OutputErrorAndExit("Error signing in: %v", err)

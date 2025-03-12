@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func main() {

@@ -7,8 +7,6 @@ import (
 	"gpt4cli-server/hooks"
 	"gpt4cli-server/model"
 	"gpt4cli-server/types"
-
-	"github.com/sashabaranov/go-openai"
 )
 
 type initClientsParams struct {
@@ -22,7 +20,7 @@ type initClientsParams struct {
 	plan        *db.Plan
 }
 
-func initClients(params initClientsParams) map[string]*openai.Client {
+func initClients(params initClientsParams) map[string]model.ClientInfo {
 	w := params.w
 	apiKey := params.apiKey
 	apiKeys := params.apiKeys
@@ -69,6 +67,11 @@ func initClients(params initClientsParams) map[string]*openai.Client {
 			continue
 		}
 
+		if planSettings.ModelPack.GetCoder().BaseModelConfig.ApiKeyEnvVar == envVar {
+			endpointsByApiKeyEnvVar[envVar] = planSettings.ModelPack.GetCoder().BaseModelConfig.BaseUrl
+			continue
+		}
+
 		if planSettings.ModelPack.PlanSummary.BaseModelConfig.ApiKeyEnvVar == envVar {
 			endpointsByApiKeyEnvVar[envVar] = planSettings.ModelPack.PlanSummary.BaseModelConfig.BaseUrl
 			continue
@@ -96,6 +99,16 @@ func initClients(params initClientsParams) map[string]*openai.Client {
 
 		if planSettings.ModelPack.GetWholeFileBuilder().BaseModelConfig.ApiKeyEnvVar == envVar {
 			endpointsByApiKeyEnvVar[envVar] = planSettings.ModelPack.GetWholeFileBuilder().BaseModelConfig.BaseUrl
+			continue
+		}
+
+		if planSettings.ModelPack.GetArchitect().BaseModelConfig.ApiKeyEnvVar == envVar {
+			endpointsByApiKeyEnvVar[envVar] = planSettings.ModelPack.GetArchitect().BaseModelConfig.BaseUrl
+			continue
+		}
+
+		if planSettings.ModelPack.GetCoder().BaseModelConfig.ApiKeyEnvVar == envVar {
+			endpointsByApiKeyEnvVar[envVar] = planSettings.ModelPack.GetCoder().BaseModelConfig.BaseUrl
 			continue
 		}
 	}

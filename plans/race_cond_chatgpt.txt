@@ -357,7 +357,7 @@ func initGitRepo(dir string) error {
 	}
 
 	// Configure user name and email for the repository
-	if err := setGitConfig(dir, "user.email", "server@gpt4cli.khulnasoft.com"); err != nil {
+	if err := setGitConfig(dir, "user.email", "server@khulnasoft.com"); err != nil {
 		return err
 	}
 	if err := setGitConfig(dir, "user.name", "Gpt4cli"); err != nil {

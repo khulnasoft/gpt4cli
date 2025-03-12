@@ -2,17 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/format"
-	"gpt4cli/lib"
-	"gpt4cli/term"
-	"strconv"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
 
-	"github.com/fatih/color"
-	"github.com/olekukonko/tablewriter"
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	"github.com/spf13/cobra"
 )
 
@@ -54,31 +50,9 @@ func current(cmd *cobra.Command, args []string) {
 		term.OutputErrorAndExit("Error getting current branches: %v", err)
 	}
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetAutoWrapText(false)
-	table.SetHeader([]string{"Current Plan", "Updated", "Created" /*"Branches",*/, "Branch", "Context", "Convo"})
+	table := lib.GetCurrentPlanTable(plan, currentBranchesByPlanId, nil)
+	fmt.Println(table)
 
-	name := color.New(color.Bold, term.ColorHiGreen).Sprint(plan.Name)
-	branch := currentBranchesByPlanId[lib.CurrentPlanId]
-
-	row := []string{
-		name,
-		format.Time(plan.UpdatedAt),
-		format.Time(plan.CreatedAt),
-		// strconv.Itoa(plan.ActiveBranches),
-		lib.CurrentBranch,
-		strconv.Itoa(branch.ContextTokens) + " 🪙",
-		strconv.Itoa(branch.ConvoTokens) + " 🪙",
-	}
-
-	style := []tablewriter.Colors{
-		{tablewriter.FgGreenColor, tablewriter.Bold},
-	}
-
-	table.Rich(row, style)
-
-	table.Render()
-	fmt.Println()
 	term.PrintCmds("", "tell", "ls", "plans")
 
 }

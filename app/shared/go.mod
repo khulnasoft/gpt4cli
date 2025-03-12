@@ -1,4 +1,4 @@
-module shared
+module gpt4cli-shared
 
 go 1.23.3
 

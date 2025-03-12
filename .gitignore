@@ -1,5 +1,7 @@
 .gpt4cli/
 .gpt4cli-dev/
+.gpt4cli-v2/
+.gpt4cli-dev-v2/
 .envkey
 gpt4cli
 gpt4cli-dev
@@ -15,3 +17,4 @@ node_modules/
 dist/
 
 .aider.*
+*.code-workspace

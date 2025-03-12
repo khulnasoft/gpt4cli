@@ -4,8 +4,9 @@ import (
 	"os"
 	"sort"
 
+	shared "gpt4cli-shared"
+
 	"github.com/olekukonko/tablewriter"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func ShowPlanConfig(config *shared.PlanConfig, key string) {

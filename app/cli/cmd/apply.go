@@ -1,25 +1,25 @@
 package cmd
 
 import (
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/plan_exec"
-	"gpt4cli/term"
-	"strconv"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/plan_exec"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
+	shared "gpt4cli-shared"
 
 	"github.com/spf13/cobra"
 )
 
-var autoCommit, noCommit, autoExec bool
+var autoCommit, skipCommit, autoExec bool
 
 func init() {
-	applyCmd.Flags().BoolVarP(&autoCommit, "commit", "c", false, "Commit changes to git")
-	applyCmd.Flags().BoolVar(&noCommit, "no-commit", false, "Do not commit changes to git")
-	applyCmd.Flags().BoolVar(&noExec, "no-exec", false, "Disable _apply.sh execution")
-	applyCmd.Flags().BoolVar(&autoExec, "auto-exec", false, "Automatically execute commands without confirmation")
-	applyCmd.Flags().Var(newAutoDebugValue(&autoDebug), "debug", "Automatically execute and debug failing commands (optionally specify number of tries—default is 5)")
-	applyCmd.Flag("debug").NoOptDefVal = strconv.Itoa(defaultAutoDebugTries)
+	initApplyFlags(applyCmd, false)
+	initExecScriptFlags(applyCmd)
 	RootCmd.AddCommand(applyCmd)
+
+	applyCmd.Flags().BoolVar(&fullAuto, "full", false, "Apply the plan and debug in full auto mode")
 }
 
 var applyCmd = &cobra.Command{
@@ -33,23 +33,49 @@ func apply(cmd *cobra.Command, args []string) {
 	auth.MustResolveAuthWithOrg()
 	lib.MustResolveProject()
 
+	var config *shared.PlanConfig
+	if fullAuto {
+		term.StartSpinner("")
+		var apiErr *shared.ApiError
+		config, apiErr = api.Client.GetPlanConfig(lib.CurrentPlanId)
+		if apiErr != nil {
+			term.OutputErrorAndExit("Error getting plan config: %v", apiErr)
+		}
+		_, updatedConfig, printFn := resolveAutoModeSilent(config)
+		config = updatedConfig
+		term.StopSpinner()
+		printFn()
+	}
+
+	mustSetPlanExecFlagsWithConfig(cmd, config)
+
 	if lib.CurrentPlanId == "" {
 		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
-	flags := lib.ApplyFlags{
+	applyFlags := types.ApplyFlags{
 		AutoConfirm: true,
 		AutoCommit:  autoCommit,
-		NoCommit:    noCommit,
+		NoCommit:    skipCommit,
 		AutoExec:    autoExec,
 		NoExec:      noExec,
 		AutoDebug:   autoDebug,
 	}
 
-	lib.MustApplyPlan(
-		lib.CurrentPlanId,
-		lib.CurrentBranch,
-		flags,
-		plan_exec.GetOnApplyExecFail(flags),
-	)
+	tellFlags := types.TellFlags{
+		TellBg:      tellBg,
+		TellStop:    tellStop,
+		TellNoBuild: tellNoBuild,
+		AutoContext: tellAutoContext,
+		ExecEnabled: !noExec,
+		AutoApply:   tellAutoApply,
+	}
+
+	lib.MustApplyPlan(lib.ApplyPlanParams{
+		PlanId:     lib.CurrentPlanId,
+		Branch:     lib.CurrentBranch,
+		ApplyFlags: applyFlags,
+		TellFlags:  tellFlags,
+		OnExecFail: plan_exec.GetOnApplyExecFail(applyFlags, tellFlags),
+	})
 }

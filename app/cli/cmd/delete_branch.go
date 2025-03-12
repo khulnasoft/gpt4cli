@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
 	"strconv"
 	"strings"
 
@@ -15,7 +15,7 @@ import (
 
 var deleteBranchCmd = &cobra.Command{
 	Use:     "delete-branch",
-	Aliases: []string{"db"},
+	Aliases: []string{"dlb"},
 	Short:   "Delete a plan branch by name or index",
 	Run:     deleteBranch,
 	Args:    cobra.MaximumNArgs(1),

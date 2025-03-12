@@ -2,34 +2,29 @@ services:
   gpt4cli-postgres:
     image: postgres:latest
     restart: always
-    env_file:
-      - ./.env
+    environment:
+      POSTGRES_PASSWORD: gpt4cli
+      POSTGRES_USER: gpt4cli
+      POSTGRES_DB: gpt4cli
     ports:
       - "5432:5432"
     volumes:
-      - ./scripts/init-db:/docker-entrypoint-initdb.d
-      - ${PGDATA_DIR}:/var/lib/postgresql/data
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
+      - gpt4cli-db:/var/lib/postgresql/data
     networks:
       - gpt4cli-network
   gpt4cli-server:
     build:
-      context: ./server
-      dockerfile: ./server/Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
     volumes:
-      - "${GPT4CLI_DATA_DIR}:${GPT4CLI_BASE_DIR}"
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
+      - gpt4cli-files:/gpt4cli-server
     ports:
-      - "8080:8080"
-    env_file:
-      - ./.env
+      - "8099:8099"
     environment:
-      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@gpt4cli-postgres:5432/${POSTGRES_DATABASE}?sslmode=disable"
-      GOENV: $GOENV
-      GPT4CLI_BASE_DIR: $GPT4CLI_BASE_DIR
-
+      DATABASE_URL: "postgres://gpt4cli:gpt4cli@gpt4cli-postgres:5432/gpt4cli?sslmode=disable"
+      GOENV: development
+      LOCAL_MODE: 1
+      GPT4CLI_BASE_DIR: /gpt4cli-server
     networks:
       - gpt4cli-network
     depends_on:
@@ -39,3 +34,7 @@ services:
 networks:
   gpt4cli-network:
     driver: bridge
+
+volumes:
+  gpt4cli-db:
+  gpt4cli-files:

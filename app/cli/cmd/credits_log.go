@@ -2,17 +2,18 @@ package cmd
 
 import (
 	"fmt"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/term"
 	"strconv"
 	"strings"
 	"unicode"
 
+	shared "gpt4cli-shared"
+
 	"github.com/eiannone/keyboard"
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 )
@@ -29,7 +30,7 @@ var usageCmd = &cobra.Command{
 }
 
 func init() {
-	usageCmd.Flags().IntVarP(&logCreditsPageSize, "page-size", "s", 20, "Number of transactions to display per page")
+	usageCmd.Flags().IntVarP(&logCreditsPageSize, "page-size", "s", 100, "Number of transactions to display per page")
 	usageCmd.Flags().IntVarP(&logCreditsPage, "page", "p", 1, "Page number to display")
 
 	RootCmd.AddCommand(usageCmd)
@@ -64,26 +65,37 @@ func creditsLog(cmd *cobra.Command, args []string) {
 			sign = "-"
 			c = term.ColorHiRed
 
-			var t string
-			if *transaction.DebitType == shared.DebitTypeModelInput {
-				t = "input"
-			} else if *transaction.DebitType == shared.DebitTypeModelOutput {
-				t = "output"
-			}
-
 			if transaction.DebitPlanName != nil {
 				desc += fmt.Sprintf("Plan → %s\n", *transaction.DebitPlanName)
 			}
 
 			surchargePct := transaction.DebitSurcharge.Div(*transaction.DebitBaseAmount)
 
-			price := transaction.DebitModelPricePerToken.Mul(decimal.NewFromInt(1000000)).Mul(surchargePct.Add(decimal.NewFromInt(1))).StringFixed(4)
+			inputPrice := transaction.DebitModelInputPricePerToken.Mul(decimal.NewFromInt(1000000)).Mul(surchargePct.Add(decimal.NewFromInt(1))).StringFixed(4)
+			outputPrice := transaction.DebitModelOutputPricePerToken.Mul(decimal.NewFromInt(1000000)).Mul(surchargePct.Add(decimal.NewFromInt(1))).StringFixed(4)
 
-			for i := 0; i < 2; i++ {
-				price = strings.TrimSuffix(price, "0")
+			var cacheDiscountStr string
+			var cacheDiscountPct float64
+			if transaction.DebitCacheDiscount != nil {
+				cacheDiscountStr = transaction.DebitCacheDiscount.StringFixed(4)
+				totalAmount := transaction.DebitBaseAmount.Add(*transaction.DebitCacheDiscount)
+				cacheDiscountPct = transaction.DebitCacheDiscount.Div(totalAmount).Mul(decimal.NewFromInt(100)).InexactFloat64()
 			}
 
-			desc += fmt.Sprintf("⚡️ %s\n🧠 %s/%s → %s\n💳 Price → $%s per 1M 🪙\n💸 Used → %d 🪙\n", *transaction.DebitPurpose, string(*transaction.DebitModelProvider), *transaction.DebitModelName, t, price, *transaction.DebitTokens)
+			for i := 0; i < 2; i++ {
+				inputPrice = strings.TrimSuffix(inputPrice, "0")
+				outputPrice = strings.TrimSuffix(outputPrice, "0")
+				cacheDiscountStr = strings.TrimSuffix(cacheDiscountStr, "0")
+			}
+
+			desc += fmt.Sprintf("⚡️ %s\n", *transaction.DebitPurpose)
+			desc += fmt.Sprintf("🧠 %s/%s\n", string(*transaction.DebitModelProvider), *transaction.DebitModelName)
+			desc += fmt.Sprintf("💳 Price → $%s input / $%s output per 1M\n", inputPrice, outputPrice)
+			desc += fmt.Sprintf("🪙 Used → %d input / %d output\n", *transaction.DebitInputTokens, *transaction.DebitOutputTokens)
+
+			if cacheDiscountStr != "" {
+				desc += fmt.Sprintf("🎯 Cache discount → $%s (%d%%)\n", cacheDiscountStr, int(cacheDiscountPct))
+			}
 
 		} else {
 			sign = "+"

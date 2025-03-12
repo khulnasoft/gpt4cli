@@ -3,12 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/lib"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
 	"strconv"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	"github.com/spf13/cobra"
 )
 
@@ -29,30 +30,34 @@ var tellStop bool
 var tellNoBuild bool
 var tellAutoApply bool
 var tellAutoContext bool
+var tellSmartContext bool
 var noExec bool
 var autoDebug int
 
 var editor string
+var editorSetByFlag bool
 
 func init() {
-	defaultEditor = os.Getenv("EDITOR")
-	if defaultEditor == "" {
-		defaultEditor = os.Getenv("VISUAL")
-		if defaultEditor == "" {
-			defaultEditor = string(defaultEditor)
-		}
+	envEditor := os.Getenv("EDITOR")
+	if envEditor == "" {
+		envEditor = os.Getenv("VISUAL")
+	}
+
+	if envEditor != "" {
+		defaultEditor = envEditor
 	}
 }
 
 type initExecFlagsParams struct {
-	omitFile        bool
-	omitNoBuild     bool
-	omitEditor      bool
-	omitStop        bool
-	omitBg          bool
-	omitApply       bool
-	omitExec        bool
-	omitAutoContext bool
+	omitFile         bool
+	omitNoBuild      bool
+	omitEditor       bool
+	omitStop         bool
+	omitBg           bool
+	omitApply        bool
+	omitExec         bool
+	omitAutoContext  bool
+	omitSmartContext bool
 }
 
 func initExecFlags(cmd *cobra.Command, params initExecFlagsParams) {
@@ -78,19 +83,17 @@ func initExecFlags(cmd *cobra.Command, params initExecFlagsParams) {
 		cmd.Flags().BoolVar(&tellAutoContext, "auto-load-context", false, shared.ConfigSettingsByKey["auto-load-context"].Desc)
 	}
 
+	if !params.omitSmartContext {
+		cmd.Flags().BoolVar(&tellSmartContext, "smart-context", false, shared.ConfigSettingsByKey["smart-context"].Desc)
+	}
+
 	if !params.omitApply {
 		cmd.Flags().BoolVar(&tellAutoApply, "apply", false, "Automatically apply changes")
-		cmd.Flags().BoolVarP(&autoCommit, "commit", "c", false, "Commit changes to git when --apply is passed")
+		initApplyFlags(cmd, true)
 	}
 
 	if !params.omitExec {
-		cmd.Flags().BoolVar(&noExec, "no-exec", false, "Disable command execution")
-
-		cmd.Flags().BoolVar(&autoExec, "auto-exec", false, "Automatically execute commands without confirmation")
-
-		cmd.Flags().Var(newAutoDebugValue(&autoDebug), "debug", "Automatically execute and debug failing commands (optionally specify number of tries—default is 5)")
-
-		cmd.Flag("debug").NoOptDefVal = strconv.Itoa(defaultAutoDebugTries)
+		initExecScriptFlags(cmd)
 	}
 
 	if !params.omitEditor {
@@ -99,39 +102,64 @@ func initExecFlags(cmd *cobra.Command, params initExecFlagsParams) {
 	}
 }
 
+func initApplyFlags(cmd *cobra.Command, applyFlag bool) {
+	commitDesc := "Commit changes to git"
+	if applyFlag {
+		commitDesc += " when --apply is passed"
+	}
+
+	skipCommitDesc := "Skip committing changes to git"
+	if applyFlag {
+		skipCommitDesc += " when --apply is passed"
+	}
+	cmd.Flags().BoolVarP(&autoCommit, "commit", "c", false, commitDesc)
+	cmd.Flags().BoolVar(&skipCommit, "skip-commit", false, skipCommitDesc)
+}
+
+func initExecScriptFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&noExec, "no-exec", false, "Disable command execution")
+	cmd.Flags().BoolVar(&autoExec, "auto-exec", false, "Automatically execute commands without confirmation")
+	cmd.Flags().Var(newAutoDebugValue(&autoDebug), "debug", "Automatically execute and debug failing commands (optionally specify number of tries—default is 5)")
+	cmd.Flag("debug").NoOptDefVal = strconv.Itoa(defaultAutoDebugTries)
+}
+
 func validatePlanExecFlags() {
 	if tellAutoApply && tellNoBuild {
-		term.OutputErrorAndExit("🚨 --apply can't be used with --no-build/-n")
+		term.OutputErrorAndExit("--apply can't be used with --no-build/-n")
 	}
 	if tellAutoApply && tellBg {
-		term.OutputErrorAndExit("🚨 --apply can't be used with --bg")
-	}
-	if autoCommit && !tellAutoApply {
-		term.OutputErrorAndExit("🚨 --commit/-c can only be used with --apply")
+		term.OutputErrorAndExit("--apply can't be used with --bg")
 	}
 	if autoExec && !tellAutoApply {
-		term.OutputErrorAndExit("🚨 --auto-exec can only be used with --apply")
+		term.OutputErrorAndExit("--auto-exec can only be used with --apply")
 	}
 	if autoDebug > 0 && !tellAutoApply {
-		term.OutputErrorAndExit("🚨 --debug can only be used with --apply")
+		term.OutputErrorAndExit("--debug can only be used with --apply")
 	}
 	if autoDebug > 0 && noExec {
-		term.OutputErrorAndExit("🚨 --debug can't be used with --no-exec")
+		term.OutputErrorAndExit("--debug can't be used with --no-exec")
 	}
 
 	if tellAutoContext && tellBg {
-		term.OutputErrorAndExit("🚨 --auto-context/-c can't be used with --bg")
+		term.OutputErrorAndExit("--auto-context/-c can't be used with --bg")
 	}
 }
 
 func mustSetPlanExecFlags(cmd *cobra.Command) {
+	mustSetPlanExecFlagsWithConfig(cmd, nil)
+}
+
+func mustSetPlanExecFlagsWithConfig(cmd *cobra.Command, config *shared.PlanConfig) {
 	if lib.CurrentPlanId == "" {
 		term.OutputNoCurrentPlanErrorAndExit()
 	}
 
-	config, apiErr := api.Client.GetPlanConfig(lib.CurrentPlanId)
-	if apiErr != nil {
-		term.OutputErrorAndExit("Error getting plan config: %v", apiErr)
+	if config == nil {
+		var apiErr *shared.ApiError
+		config, apiErr = api.Client.GetPlanConfig(lib.CurrentPlanId)
+		if apiErr != nil {
+			term.OutputErrorAndExit("Error getting plan config: %v", apiErr)
+		}
 	}
 
 	// Set flag vars from config when flags aren't explicitly set
@@ -149,11 +177,17 @@ func mustSetPlanExecFlags(cmd *cobra.Command) {
 	if !cmd.Flags().Changed("apply") {
 		tellAutoApply = config.AutoApply
 	}
+	if !cmd.Flags().Changed("skip-commit") {
+		skipCommit = config.SkipCommit
+	}
 	if !cmd.Flags().Changed("commit") {
 		autoCommit = config.AutoCommit
 	}
 	if !cmd.Flags().Changed("auto-load-context") {
 		tellAutoContext = config.AutoLoadContext
+	}
+	if !cmd.Flags().Changed("smart-context") {
+		tellSmartContext = config.SmartContext
 	}
 	if !cmd.Flags().Changed("no-exec") {
 		noExec = !config.CanExec
@@ -167,6 +201,10 @@ func mustSetPlanExecFlags(cmd *cobra.Command) {
 		if !config.AutoDebug {
 			autoDebug = 0
 		}
+	}
+
+	if !editorSetByFlag {
+		editor = config.Editor
 	}
 
 	validatePlanExecFlags()
@@ -215,7 +253,7 @@ type editorValue struct {
 }
 
 func newEditorValue(p *string) *editorValue {
-	*p = "" // Default to empty string
+	*p = defaultEditor
 	return &editorValue{p}
 }
 
@@ -225,6 +263,7 @@ func (f *editorValue) Set(s string) error {
 		return nil
 	}
 	*f.value = s
+	editorSetByFlag = true
 	return nil
 }
 

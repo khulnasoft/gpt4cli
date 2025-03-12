@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
 
 	"github.com/spf13/cobra"
 )
@@ -27,7 +29,21 @@ func update(cmd *cobra.Command, args []string) {
 	lib.MustResolveProject()
 
 	term.StartSpinner("")
-	outdated, err := lib.CheckOutdatedContext(nil)
+
+	contexts, apiErr := api.Client.ListContext(lib.CurrentPlanId, lib.CurrentBranch)
+
+	if apiErr != nil {
+		term.StopSpinner()
+		term.OutputErrorAndExit("failed to list context: %s", apiErr)
+	}
+
+	paths, err := fs.GetProjectPaths(fs.ProjectRoot)
+
+	if err != nil {
+		term.OutputErrorAndExit("error getting project paths: %v", err)
+	}
+
+	outdated, err := lib.CheckOutdatedContext(contexts, paths)
 
 	if err != nil {
 		term.StopSpinner()
@@ -40,5 +56,9 @@ func update(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	lib.UpdateContextWithOutput(nil)
+	lib.UpdateContextWithOutput(lib.UpdateContextParams{
+		Contexts:    contexts,
+		OutdatedRes: *outdated,
+		Req:         outdated.Req,
+	})
 }

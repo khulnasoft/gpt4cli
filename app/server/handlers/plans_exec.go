@@ -13,11 +13,10 @@ import (
 	"gpt4cli-server/types"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/khulnasoft/gpt4cli/shared"
-)
+	shared "gpt4cli-shared"
 
-const TrialMaxReplies = 10
+	"github.com/gorilla/mux"
+)
 
 func TellPlanHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received request for TellPlanHandler", "ip:", host.Ip)
@@ -86,7 +85,7 @@ func TellPlanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if requestBody.ConnectStream {
-		startResponseStream(w, auth, planId, branch, false)
+		startResponseStream(r.Context(), w, auth, planId, branch, false)
 	}
 
 	log.Println("Successfully processed request for TellPlanHandler")
@@ -154,7 +153,7 @@ func BuildPlanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if requestBody.ConnectStream {
-		startResponseStream(w, auth, planId, branch, false)
+		startResponseStream(r.Context(), w, auth, planId, branch, false)
 	}
 
 	log.Println("Successfully processed request for BuildPlanHandler")
@@ -196,7 +195,7 @@ func ConnectPlanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startResponseStream(w, auth, planId, branch, true)
+	startResponseStream(r.Context(), w, auth, planId, branch, true)
 
 	log.Println("Successfully processed request for ConnectPlanHandler")
 }
@@ -242,30 +241,33 @@ func StopPlanHandler(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(100 * time.Millisecond)
 
 	var err error
-	ctx, cancel := context.WithCancel(context.Background())
-	unlockFn := LockRepo(w, r, auth, db.LockScopeWrite, ctx, cancel, true)
-	if unlockFn == nil {
-		return
-	} else {
-		defer func() {
-			(*unlockFn)(err)
+	ctx, cancel := context.WithCancel(r.Context())
 
-			if err == nil {
-				err = modelPlan.Stop(planId, branch, auth.User.Id, auth.OrgId)
+	// this is here to ensure that the plan is stopped even if the db operation fails
+	defer func() {
+		err = modelPlan.Stop(planId, branch, auth.User.Id, auth.OrgId)
 
-				if err != nil {
-					log.Printf("Error stopping plan: %v\n", err)
-					http.Error(w, "Error stopping plan", http.StatusInternalServerError)
-					return
-				}
+		if err != nil {
+			log.Printf("Error stopping plan: %v\n", err)
+		}
 
-				log.Println("Successfully processed request for StopPlanHandler")
-			}
-		}()
-	}
+		log.Println("Successfully processed request for StopPlanHandler")
+	}()
 
-	log.Println("Stopping plan")
-	err = modelPlan.StorePartialReply(planId, branch, auth.User.Id, auth.OrgId)
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   planId,
+		Branch:   branch,
+		Reason:   "stop plan",
+		Scope:    db.LockScopeWrite,
+		Ctx:      ctx,
+		CancelFn: cancel,
+	}, func(repo *db.GitRepo) error {
+		log.Println("Stopping plan")
+		err = modelPlan.StorePartialReply(repo, planId, branch, auth.User.Id, auth.OrgId)
+		return err
+	})
 
 	if err != nil {
 		log.Printf("Error storing partial reply: %v\n", err)
@@ -326,14 +328,22 @@ func RespondMissingFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	if requestBody.Choice == shared.RespondMissingFileChoiceLoad {
 		log.Println("loading missing file")
-		res, dbContexts := loadContexts(w, r, auth, &shared.LoadContextRequest{
-			&shared.LoadContextParams{
-				ContextType: shared.ContextFileType,
-				Name:        requestBody.FilePath,
-				FilePath:    requestBody.FilePath,
-				Body:        requestBody.Body,
+		res, dbContexts := loadContexts(loadContextsParams{
+			w:    w,
+			r:    r,
+			auth: auth,
+			loadReq: &shared.LoadContextRequest{
+				&shared.LoadContextParams{
+					ContextType: shared.ContextFileType,
+					Name:        requestBody.FilePath,
+					FilePath:    requestBody.FilePath,
+					Body:        requestBody.Body,
+				},
 			},
-		}, plan, branch, nil)
+			plan:       plan,
+			branchName: branch,
+			autoLoaded: true,
+		})
 		if res == nil {
 			return
 		}
@@ -343,6 +353,11 @@ func RespondMissingFileHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("loaded missing file:", dbContext.FilePath)
 
 		modelPlan.UpdateActivePlan(planId, branch, func(activePlan *types.ActivePlan) {
+			if activePlan == nil {
+				log.Println("Active plan is nil")
+				http.Error(w, "Active plan is nil", http.StatusInternalServerError)
+				return
+			}
 			activePlan.Contexts = append(activePlan.Contexts, dbContext)
 			activePlan.ContextsByPath[dbContext.FilePath] = dbContext
 		})
@@ -404,7 +419,15 @@ func AutoLoadContextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("AutoLoadContextHandler - loading contexts")
-	res, dbContexts := loadContexts(w, r, auth, &requestBody, plan, branch, nil)
+	res, dbContexts := loadContexts(loadContextsParams{
+		w:          w,
+		r:          r,
+		auth:       auth,
+		loadReq:    &requestBody,
+		plan:       plan,
+		branchName: branch,
+		autoLoaded: true,
+	})
 
 	if res == nil {
 		return
@@ -413,11 +436,18 @@ func AutoLoadContextHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("AutoLoadContextHandler - updating active plan")
 
 	modelPlan.UpdateActivePlan(planId, branch, func(activePlan *types.ActivePlan) {
+		if activePlan == nil {
+			log.Println("Active plan is nil")
+			http.Error(w, "Active plan is nil", http.StatusInternalServerError)
+			return
+		}
 		activePlan.Contexts = append(activePlan.Contexts, dbContexts...)
 		for _, dbContext := range dbContexts {
 			activePlan.ContextsByPath[dbContext.FilePath] = dbContext
 		}
 	})
+
+	log.Println("AutoLoadContextHandler - updated active plan")
 
 	var apiContexts []*shared.Context
 	for _, dbContext := range dbContexts {
@@ -445,6 +475,55 @@ func AutoLoadContextHandler(w http.ResponseWriter, r *http.Request) {
 	active.AutoLoadContextCh <- struct{}{}
 
 	log.Println("Successfully processed request for AutoLoadContextHandler")
+}
+
+func GetBuildStatusHandler(w http.ResponseWriter, r *http.Request) {
+	// logs are too chatty on this function, uncomment if you need to debug
+	// log.Println("Received request for GetBuildStatusHandler", "ip:", host.Ip)
+
+	vars := mux.Vars(r)
+	planId := vars["planId"]
+	branch := vars["branch"]
+
+	isProxy := r.URL.Query().Get("proxy") == "true"
+
+	active := modelPlan.GetActivePlan(planId, branch)
+	if active == nil {
+		if isProxy {
+			log.Println("No active plan on proxied request")
+			http.Error(w, "No active plan", http.StatusNotFound)
+			return
+		}
+
+		proxyActivePlanMethod(w, r, planId, branch, "auto_load_context")
+		return
+	}
+
+	auth := Authenticate(w, r, true)
+	if auth == nil {
+		return
+	}
+
+	plan := authorizePlan(w, planId, auth)
+	if plan == nil {
+		return
+	}
+
+	response := shared.GetBuildStatusResponse{
+		BuiltFiles:       active.BuiltFiles,
+		IsBuildingByPath: active.IsBuildingByPath,
+	}
+
+	bytes, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error marshalling response: %v\n", err)
+		http.Error(w, "Error marshalling response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(bytes)
+
+	// log.Println("Successfully processed request for GetBuildStatusHandler")
 }
 
 func authorizePlanExecUpdate(w http.ResponseWriter, planId string, auth *types.ServerAuth) *db.Plan {
