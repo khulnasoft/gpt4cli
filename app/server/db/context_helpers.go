@@ -16,8 +16,9 @@ import (
 	"sync"
 	"time"
 
+	shared "gpt4cli-shared"
+
 	"github.com/google/uuid"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 type Ctx context.Context
@@ -126,8 +127,28 @@ func GetContext(orgId, planId, contextId string, includeBody, includeMapParts bo
 }
 
 func ContextRemove(orgId, planId string, contexts []*Context) error {
+	return contextRemove(contextRemoveParams{
+		orgId:    orgId,
+		planId:   planId,
+		contexts: contexts,
+	})
+}
+
+type contextRemoveParams struct {
+	orgId        string
+	planId       string
+	contexts     []*Context
+	descriptions []*ConvoMessageDescription
+	currentPlan  *shared.CurrentPlanState
+}
+
+func contextRemove(params contextRemoveParams) error {
+	orgId := params.orgId
+	planId := params.planId
+	contexts := params.contexts
+
 	// remove files
-	numFiles := len(contexts) * 2
+	numFiles := 0
 
 	filesToUpdate := make(map[string]string)
 
@@ -136,6 +157,7 @@ func ContextRemove(orgId, planId string, contexts []*Context) error {
 		filesToUpdate[context.FilePath] = ""
 		contextDir := getPlanContextDir(orgId, planId)
 		for _, ext := range []string{".meta", ".body", ".map-parts"} {
+			numFiles++
 			go func(context *Context, dir, ext string) {
 				errCh <- os.Remove(filepath.Join(dir, context.Id+ext))
 			}(context, contextDir, ext)
@@ -149,9 +171,88 @@ func ContextRemove(orgId, planId string, contexts []*Context) error {
 		}
 	}
 
-	err := invalidateConflictedResults(orgId, planId, filesToUpdate)
+	err := invalidateConflictedResults(invalidateConflictedResultsParams{
+		orgId:         orgId,
+		planId:        planId,
+		filesToUpdate: filesToUpdate,
+		descriptions:  params.descriptions,
+		currentPlan:   params.currentPlan,
+	})
 	if err != nil {
 		return fmt.Errorf("error invalidating conflicted results: %v", err)
+	}
+
+	return nil
+}
+
+type ClearContextParams struct {
+	OrgId       string
+	PlanId      string
+	SkipMaps    bool
+	SkipPending bool
+}
+
+func ClearContext(params ClearContextParams) error {
+	orgId := params.OrgId
+	planId := params.PlanId
+	skipMaps := params.SkipMaps
+	skipPending := params.SkipPending
+
+	contexts, err := GetPlanContexts(orgId, planId, false, false)
+	if err != nil {
+		return fmt.Errorf("error getting plan contexts: %v", err)
+	}
+
+	var descriptions []*ConvoMessageDescription
+	var currentPlan *shared.CurrentPlanState
+
+	if skipPending {
+		var err error
+		descriptions, err = GetConvoMessageDescriptions(orgId, planId)
+		if err != nil {
+			return fmt.Errorf("error getting pending build descriptions: %v", err)
+		}
+
+		currentPlan, err = GetCurrentPlanState(CurrentPlanStateParams{
+			OrgId:                    orgId,
+			PlanId:                   planId,
+			ConvoMessageDescriptions: descriptions,
+		})
+
+		if err != nil {
+			return fmt.Errorf("error getting current plan state: %v", err)
+		}
+	}
+
+	toRemove := []*Context{}
+
+	for _, context := range contexts {
+		shouldSkip := false
+
+		if !(skipMaps && context.ContextType == shared.ContextMapType) {
+			shouldSkip = true
+		}
+
+		if skipPending && currentPlan.CurrentPlanFiles.Files[context.FilePath] != "" {
+			shouldSkip = true
+		}
+
+		if !shouldSkip {
+			toRemove = append(toRemove, context)
+		}
+	}
+
+	if len(toRemove) > 0 {
+		err := contextRemove(contextRemoveParams{
+			orgId:        orgId,
+			planId:       planId,
+			contexts:     toRemove,
+			descriptions: descriptions,
+			currentPlan:  currentPlan,
+		})
+		if err != nil {
+			return fmt.Errorf("error removing non-map contexts: %v", err)
+		}
 	}
 
 	return nil
@@ -311,6 +412,7 @@ type LoadContextsParams struct {
 	UserId                   string
 	SkipConflictInvalidation bool
 	CachedMapsByPath         map[string]*CachedMap
+	AutoLoaded               bool
 }
 
 func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextResponse, []*Context, error) {
@@ -326,6 +428,7 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 	planId := plan.Id
 	branchName := params.BranchName
 	userId := params.UserId
+	autoLoaded := params.AutoLoaded
 
 	filesToLoad := map[string]string{}
 	for _, context := range *req {
@@ -335,13 +438,18 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 	}
 
 	if !params.SkipConflictInvalidation {
-		err := invalidateConflictedResults(orgId, planId, filesToLoad)
+		err := invalidateConflictedResults(invalidateConflictedResultsParams{
+			orgId:         orgId,
+			planId:        planId,
+			filesToUpdate: filesToLoad,
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("error invalidating conflicted results: %v", err)
 		}
 	}
 
 	tokensAdded := 0
+	basicTokensAdded := 0
 
 	paramsByTempId := make(map[string]*shared.LoadContextParams)
 	numTokensByTempId := make(map[string]int)
@@ -351,13 +459,23 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 		return nil, nil, fmt.Errorf("error getting branch: %v", err)
 	}
 	totalTokens := branch.ContextTokens
+	totalPlannerTokens := totalTokens
+	totalBasicPlannerTokens := 0
+	totalMapTokens := 0
 
 	settings, err := GetPlanSettings(plan, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting settings: %v", err)
 	}
 
-	maxTokens := settings.GetPlannerEffectiveMaxTokens()
+	planConfig, err := GetPlanConfig(planId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting plan config: %v", err)
+	}
+
+	plannerMaxTokens := settings.GetPlannerEffectiveMaxTokens()
+	contextLoaderMaxTokens := settings.GetArchitectEffectiveMaxTokens()
+
 	mapContextsByFilePath := make(map[string]Context)
 
 	existingContexts, err := GetPlanContexts(orgId, planId, false, false)
@@ -368,6 +486,15 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 	for _, context := range existingContexts {
 		composite := strings.Join([]string{context.Name, string(context.ContextType)}, "|")
 		existingContextsByName[composite] = true
+
+		if planConfig.AutoLoadContext && context.ContextType == shared.ContextMapType {
+			totalMapTokens += context.NumTokens
+			totalPlannerTokens -= context.NumTokens
+		}
+
+		if !context.AutoLoaded && context.ContextType != shared.ContextMapType {
+			totalBasicPlannerTokens += context.NumTokens
+		}
 	}
 
 	var filteredReq []*shared.LoadContextParams
@@ -388,7 +515,10 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 		var numTokens int
 		var err error
 
+		var isMap bool
+
 		if context.ContextType == shared.ContextMapType && (len(context.MapInputs) > 0 || params.CachedMapsByPath != nil) {
+			isMap = true
 			var mappedFiles shared.FileMapBodies
 			if params.CachedMapsByPath != nil && params.CachedMapsByPath[context.FilePath] != nil {
 				log.Println("Using cached map for", context.FilePath)
@@ -418,19 +548,16 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 					hash := sha256.Sum256([]byte(input))
 					mapShas[path] = hex.EncodeToString(hash[:])
 					mapBody := mappedFiles[path]
-					mapTokens[path], err = shared.GetNumTokens(mapBody)
-					if err != nil {
-						return nil, nil, fmt.Errorf("error getting num tokens for %s: %v", path, err)
-					}
+					mapTokens[path] = shared.GetNumTokensEstimate(mapBody)
 				}
 			}
 
 			combinedBody := mappedFiles.CombinedMap()
+			numTokens = shared.GetNumTokensEstimate(combinedBody)
 
-			numTokens, err = shared.GetNumTokens(combinedBody)
-			if err != nil {
-				return nil, nil, fmt.Errorf("error getting num tokens: %v", err)
-			}
+			autoLoaded = autoLoaded || context.AutoLoaded
+
+			log.Println("LoadContexts - map - autoLoaded", autoLoaded)
 
 			newContext := Context{
 				// Id generated by db layer
@@ -447,40 +574,74 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 				MapParts:    mappedFiles,
 				MapShas:     mapShas,
 				MapTokens:   mapTokens,
+				AutoLoaded:  autoLoaded || context.AutoLoaded,
 			}
 
 			mapContextsByFilePath[context.FilePath] = newContext
 
 		} else if context.ContextType == shared.ContextImageType {
 			numTokens, err = shared.GetImageTokens(context.Body, context.ImageDetail)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error getting image num tokens: %v", err)
+			}
 		} else {
-			numTokens, err = shared.GetNumTokens(context.Body)
-		}
-
-		if err != nil {
-			return nil, nil, fmt.Errorf("error getting num tokens: %v", err)
+			numTokens = shared.GetNumTokensEstimate(context.Body)
 		}
 
 		paramsByTempId[tempId] = context
 		numTokensByTempId[tempId] = numTokens
-
-		tokensAdded += numTokens
 		totalTokens += numTokens
+
+		// maps don't count toward the token limit if auto-loading
+		if planConfig.AutoLoadContext && isMap {
+			tokensAdded += numTokens
+			totalMapTokens += numTokens
+		} else if autoLoaded {
+			tokensAdded += numTokens
+			totalPlannerTokens += numTokens
+		} else {
+			tokensAdded += numTokens
+			totalPlannerTokens += numTokens
+			totalBasicPlannerTokens += numTokens
+			basicTokensAdded += numTokens
+		}
 	}
 
 	// showElapsed("Loaded reqs")
+	if planConfig.AutoLoadContext {
+		if totalMapTokens > contextLoaderMaxTokens {
+			return &shared.LoadContextResponse{
+				TokensAdded:       tokensAdded,
+				TotalTokens:       totalMapTokens,
+				MaxTokens:         contextLoaderMaxTokens,
+				MaxTokensExceeded: true,
+			}, nil, nil
+		}
 
-	if totalTokens > maxTokens {
-		return &shared.LoadContextResponse{
-			TokensAdded:       tokensAdded,
-			TotalTokens:       totalTokens,
-			MaxTokens:         maxTokens,
-			MaxTokensExceeded: true,
-		}, nil, nil
+		if totalBasicPlannerTokens > plannerMaxTokens {
+			return &shared.LoadContextResponse{
+				TokensAdded:       basicTokensAdded,
+				TotalTokens:       totalBasicPlannerTokens,
+				MaxTokens:         plannerMaxTokens,
+				MaxTokensExceeded: true,
+			}, nil, nil
+		}
+	} else {
+		if totalTokens > plannerMaxTokens {
+			return &shared.LoadContextResponse{
+				TokensAdded:       tokensAdded,
+				TotalTokens:       totalTokens,
+				MaxTokens:         plannerMaxTokens,
+				MaxTokensExceeded: true,
+			}, nil, nil
+		}
 	}
 
-	dbContextsCh := make(chan *Context)
-	errCh := make(chan error)
+	var dbContexts []*Context
+	var apiContexts []*shared.Context
+	var mu sync.Mutex
+
+	errCh := make(chan error, len(paramsByTempId))
 	for tempId, loadParams := range paramsByTempId {
 
 		go func(tempId string, loadParams *shared.LoadContextParams) {
@@ -509,33 +670,32 @@ func LoadContexts(ctx Ctx, params LoadContextsParams) (*shared.LoadContextRespon
 					Body:            loadParams.Body,
 					ForceSkipIgnore: loadParams.ForceSkipIgnore,
 					ImageDetail:     loadParams.ImageDetail,
+					AutoLoaded:      autoLoaded || loadParams.AutoLoaded,
 				}
 			}
 
 			err := StoreContext(&context, params.CachedMapsByPath != nil)
 
 			if err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("error storing context: %v", err)
 				return
 			}
 
-			dbContextsCh <- &context
+			mu.Lock()
+			dbContexts = append(dbContexts, &context)
+			apiContext := context.ToApi()
+			apiContext.Body = ""
+			apiContexts = append(apiContexts, apiContext)
+			mu.Unlock()
 
+			errCh <- nil
 		}(tempId, loadParams)
 	}
 
-	var dbContexts []*Context
-	var apiContexts []*shared.Context
-
-	for i := 0; i < len(*req); i++ {
-		select {
-		case err := <-errCh:
+	for i := 0; i < len(paramsByTempId); i++ {
+		err := <-errCh
+		if err != nil {
 			return nil, nil, fmt.Errorf("error storing context: %v", err)
-		case dbContext := <-dbContextsCh:
-			dbContexts = append(dbContexts, dbContext)
-			apiContext := dbContext.ToApi()
-			apiContext.Body = ""
-			apiContexts = append(apiContexts, apiContext)
 		}
 	}
 
@@ -582,15 +742,47 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 		return nil, fmt.Errorf("branch not found")
 	}
 
+	totalTokens := branch.ContextTokens
+	totalPlannerTokens := totalTokens
+
+	totalMapTokens := 0
+
+	totalBasicPlannerTokens := 0
+	for _, context := range params.ContextsById {
+		if context.ContextType != shared.ContextMapType && !context.AutoLoaded {
+			totalBasicPlannerTokens += context.NumTokens
+		}
+	}
+
 	settings, err := GetPlanSettings(plan, true)
 	if err != nil {
 		return nil, fmt.Errorf("error getting settings: %v", err)
 	}
 
-	maxTokens := settings.GetPlannerEffectiveMaxTokens()
-	totalTokens := branch.ContextTokens
+	planConfig, err := GetPlanConfig(planId)
+	if err != nil {
+		return nil, fmt.Errorf("error getting plan config: %v", err)
+	}
 
-	tokensDiff := 0
+	plannerMaxTokens := settings.GetPlannerEffectiveMaxTokens()
+	contextLoaderMaxTokens := settings.GetArchitectEffectiveMaxTokens()
+
+	if planConfig.AutoLoadContext {
+		existingContexts, err := GetPlanContexts(orgId, planId, false, false)
+		if err != nil {
+			return nil, fmt.Errorf("error getting existing contexts: %v", err)
+		}
+
+		for _, context := range existingContexts {
+			if context.ContextType == shared.ContextMapType {
+				totalMapTokens += context.NumTokens
+				totalPlannerTokens -= context.NumTokens
+			}
+		}
+	}
+
+	aggregateTokensDiff := 0
+	aggregateBasicTokensDiff := 0
 	tokenDiffsById := make(map[string]int)
 
 	var contextsById map[string]*Context
@@ -633,13 +825,10 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 	numMaps := 0
 
 	var mu sync.Mutex
-	errCh := make(chan error)
-
-	log.Printf("updating %d outdated contexts\n", len(*req))
+	errCh := make(chan error, len(*req))
 
 	for id, params := range *req {
 		go func(id string, params *shared.UpdateContextParams) {
-
 			var context *Context
 			if _, ok := contextsById[id]; ok {
 				context = contextsById[id]
@@ -651,7 +840,6 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 					errCh <- fmt.Errorf("error getting context: %v", err)
 					return
 				}
-
 				// log.Println("Got context", context.Id, "numTokens", context.NumTokens)
 			}
 
@@ -667,23 +855,26 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 
 				if context.ContextType == shared.ContextImageType {
 					updateNumTokens, err = shared.GetImageTokens(params.Body, context.ImageDetail)
+					if err != nil {
+						errCh <- fmt.Errorf("error getting num tokens: %v", err)
+						return
+					}
 				} else {
-					updateNumTokens, err = shared.GetNumTokens(params.Body)
-
+					updateNumTokens = shared.GetNumTokensEstimate(params.Body)
 					// log.Println("len(params.Body)", len(params.Body))
 				}
 
 				// log.Println("Updating context", id, "updateNumTokens", updateNumTokens)
 
-				if err != nil {
-					errCh <- fmt.Errorf("error getting num tokens: %v", err)
-					return
-				}
-
 				tokenDiff := updateNumTokens - context.NumTokens
 				tokenDiffsById[id] = tokenDiff
-				tokensDiff += tokenDiff
+				aggregateTokensDiff += tokenDiff
 				totalTokens += tokenDiff
+				totalPlannerTokens += tokenDiff
+				if !context.AutoLoaded {
+					totalBasicPlannerTokens += tokenDiff
+					aggregateBasicTokensDiff += tokenDiff
+				}
 				context.NumTokens = updateNumTokens
 			}
 
@@ -709,27 +900,16 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 		}
 	}
 
-	updateRes := &shared.ContextUpdateResult{
-		UpdatedContexts: updatedContexts,
-		TokenDiffsById:  tokenDiffsById,
-		TokensDiff:      tokensDiff,
-		TotalTokens:     totalTokens,
-		NumFiles:        numFiles,
-		NumUrls:         numUrls,
-		NumTrees:        numTrees,
-		NumMaps:         numMaps,
-		MaxTokens:       maxTokens,
+	if planConfig.AutoLoadContext {
+		if totalBasicPlannerTokens > plannerMaxTokens {
+			return &shared.UpdateContextResponse{
+				TokensAdded:       aggregateTokensDiff,
+				TotalTokens:       totalBasicPlannerTokens,
+				MaxTokens:         plannerMaxTokens,
+				MaxTokensExceeded: true,
+			}, nil
+		}
 	}
-
-	if totalTokens > maxTokens {
-		return &shared.UpdateContextResponse{
-			TokensAdded:       tokensDiff,
-			TotalTokens:       totalTokens,
-			MaxTokens:         maxTokens,
-			MaxTokensExceeded: true,
-		}, nil
-	}
-
 	filesToLoad := map[string]string{}
 	for _, context := range updatedContexts {
 		if context.ContextType == shared.ContextFileType {
@@ -738,13 +918,17 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 	}
 
 	if !params.SkipConflictInvalidation {
-		err = invalidateConflictedResults(orgId, planId, filesToLoad)
+		err = invalidateConflictedResults(invalidateConflictedResultsParams{
+			orgId:         orgId,
+			planId:        planId,
+			filesToUpdate: filesToLoad,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("error invalidating conflicted results: %v", err)
 		}
 	}
 
-	errCh = make(chan error)
+	errCh = make(chan error, len(*req))
 
 	for id, params := range *req {
 		go func(id string, params *shared.UpdateContextParams) {
@@ -752,18 +936,23 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 
 			if context.ContextType == shared.ContextMapType {
 				oldNumTokens := context.NumTokens
-
-				// log.Println("Updating map context", id, "oldNumTokens", oldNumTokens)
-
 				for path, part := range params.MapBodies {
+					if context.MapParts == nil {
+						context.MapParts = make(shared.FileMapBodies)
+					}
+					if context.MapShas == nil {
+						context.MapShas = make(map[string]string)
+					}
+					if context.MapTokens == nil {
+						context.MapTokens = make(map[string]int)
+					}
+
+					// prevNumTokens := context.MapTokens[path]
+
 					context.MapParts[path] = part
 					context.MapShas[path] = params.InputShas[path]
 
-					numTokens, err := shared.GetNumTokens(part)
-					if err != nil {
-						errCh <- fmt.Errorf("error getting num tokens for %s: %v", path, err)
-						return
-					}
+					numTokens := params.MapBodies.TokenEstimateForPath(path)
 					context.MapTokens[path] = numTokens
 				}
 
@@ -774,26 +963,19 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 				}
 
 				context.Body = context.MapParts.CombinedMap()
-				newNumTokens, err := shared.GetNumTokens(context.Body)
-				if err != nil {
-					errCh <- fmt.Errorf("error getting num tokens for %s: %v", context.Id, err)
-					return
-				}
-
-				// log.Println("Updated map context", id, "newNumTokens", newNumTokens)
-
+				newNumTokens := shared.GetNumTokensEstimate(context.Body)
 				tokenDiff := newNumTokens - oldNumTokens
 
-				// log.Println("Updated map context", id, "tokenDiff", tokenDiff)
-
+				mu.Lock()
 				tokenDiffsById[id] = tokenDiff
-				tokensDiff += tokenDiff
-
-				// log.Println("Updated map context", id, "tokensDiff", tokensDiff)
-
+				aggregateTokensDiff += tokenDiff
 				totalTokens += tokenDiff
-
-				// log.Println("Updated map context", id, "totalTokens", totalTokens)
+				if planConfig.AutoLoadContext {
+					totalMapTokens += tokenDiff
+				} else {
+					totalPlannerTokens += tokenDiff
+				}
+				mu.Unlock()
 
 				context.NumTokens = newNumTokens
 			} else {
@@ -815,10 +997,6 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 			// log.Println("stored context", id)
 			// log.Println()
 
-			if context.ContextType == shared.ContextMapType {
-
-			}
-
 			errCh <- nil
 		}(id, params)
 	}
@@ -830,34 +1008,88 @@ func UpdateContexts(params UpdateContextsParams) (*shared.UpdateContextResponse,
 		}
 	}
 
-	err = AddPlanContextTokens(planId, branchName, tokensDiff)
+	if planConfig.AutoLoadContext {
+		if totalMapTokens > contextLoaderMaxTokens {
+			return &shared.UpdateContextResponse{
+				TokensAdded:       aggregateTokensDiff,
+				TotalTokens:       totalTokens,
+				MaxTokens:         contextLoaderMaxTokens,
+				MaxTokensExceeded: true,
+			}, nil
+		}
+	}
+
+	updateRes := &shared.ContextUpdateResult{
+		UpdatedContexts: updatedContexts,
+		TokenDiffsById:  tokenDiffsById,
+		TokensDiff:      aggregateTokensDiff,
+		TotalTokens:     totalTokens,
+		NumFiles:        numFiles,
+		NumUrls:         numUrls,
+		NumTrees:        numTrees,
+		NumMaps:         numMaps,
+		MaxTokens:       plannerMaxTokens,
+	}
+
+	err = AddPlanContextTokens(planId, branchName, aggregateTokensDiff)
 	if err != nil {
 		return nil, fmt.Errorf("error adding plan context tokens: %v", err)
 	}
 
-	commitMsg := shared.SummaryForUpdateContext(updateRes) + "\n\n" + shared.TableForContextUpdate(updateRes)
-
+	commitMsg := shared.SummaryForUpdateContext(shared.SummaryForUpdateContextParams{
+		NumFiles:    numFiles,
+		NumTrees:    numTrees,
+		NumUrls:     numUrls,
+		NumMaps:     numMaps,
+		TokensDiff:  aggregateTokensDiff,
+		TotalTokens: totalTokens,
+	}) + "\n\n" + shared.TableForContextUpdate(updateRes)
 	return &shared.LoadContextResponse{
-		TokensAdded: tokensDiff,
+		TokensAdded: aggregateTokensDiff,
 		TotalTokens: totalTokens,
 		Msg:         commitMsg,
 	}, nil
 }
 
-func invalidateConflictedResults(orgId, planId string, filesToUpdate map[string]string) error {
-	descriptions, err := GetConvoMessageDescriptions(orgId, planId)
-	if err != nil {
-		return fmt.Errorf("error getting pending build descriptions: %v", err)
+type invalidateConflictedResultsParams struct {
+	orgId         string
+	planId        string
+	filesToUpdate map[string]string
+	descriptions  []*ConvoMessageDescription
+	currentPlan   *shared.CurrentPlanState
+}
+
+func invalidateConflictedResults(params invalidateConflictedResultsParams) error {
+	orgId := params.orgId
+	planId := params.planId
+	filesToUpdate := params.filesToUpdate
+
+	var descriptions []*ConvoMessageDescription
+
+	if params.descriptions == nil {
+		var err error
+		descriptions, err = GetConvoMessageDescriptions(orgId, planId)
+		if err != nil {
+			return fmt.Errorf("error getting pending build descriptions: %v", err)
+		}
+	} else {
+		descriptions = params.descriptions
 	}
 
-	currentPlan, err := GetCurrentPlanState(CurrentPlanStateParams{
-		OrgId:                    orgId,
-		PlanId:                   planId,
-		ConvoMessageDescriptions: descriptions,
-	})
+	var currentPlan *shared.CurrentPlanState
 
-	if err != nil {
-		return fmt.Errorf("error getting current plan state: %v", err)
+	if params.currentPlan == nil {
+		var err error
+		currentPlan, err = GetCurrentPlanState(CurrentPlanStateParams{
+			OrgId:                    orgId,
+			PlanId:                   planId,
+			ConvoMessageDescriptions: descriptions,
+		})
+		if err != nil {
+			return fmt.Errorf("error getting current plan state: %v", err)
+		}
+	} else {
+		currentPlan = params.currentPlan
 	}
 
 	conflictPaths := currentPlan.PlanResult.FileResultsByPath.ConflictedPaths(filesToUpdate)
@@ -865,37 +1097,38 @@ func invalidateConflictedResults(orgId, planId string, filesToUpdate map[string]
 	// log.Println("invalidateConflictedResults - Conflicted paths:", conflictPaths)
 
 	if len(conflictPaths) > 0 {
-		errCh := make(chan error)
-		numRoutines := 0
+		toUpdateDescs := []*ConvoMessageDescription{}
 
 		for _, desc := range descriptions {
 			if !desc.DidBuild || desc.AppliedAt != nil {
 				continue
 			}
 
-			for _, path := range desc.Files {
-				if _, found := conflictPaths[path]; found {
+			for _, op := range desc.Operations {
+				if _, found := conflictPaths[op.Path]; found {
 					if desc.BuildPathsInvalidated == nil {
 						desc.BuildPathsInvalidated = make(map[string]bool)
 					}
-					desc.BuildPathsInvalidated[path] = true
-
-					// log.Printf("Invalidating build for path: %s, desc: %s\n", path, desc.Id)
-
-					go func(desc *ConvoMessageDescription) {
-						err := StoreDescription(desc)
-
-						if err != nil {
-							errCh <- fmt.Errorf("error storing description: %v", err)
-							return
-						}
-
-						errCh <- nil
-					}(desc)
-
-					numRoutines++
+					desc.BuildPathsInvalidated[op.Path] = true
+					toUpdateDescs = append(toUpdateDescs, desc)
 				}
 			}
+		}
+
+		numRoutines := len(toUpdateDescs) + 1
+		errCh := make(chan error, numRoutines)
+
+		for _, desc := range toUpdateDescs {
+			go func(desc *ConvoMessageDescription) {
+				err := StoreDescription(desc)
+
+				if err != nil {
+					errCh <- fmt.Errorf("error storing description: %v", err)
+					return
+				}
+
+				errCh <- nil
+			}(desc)
 		}
 
 		go func() {
@@ -908,7 +1141,6 @@ func invalidateConflictedResults(orgId, planId string, filesToUpdate map[string]
 
 			errCh <- nil
 		}()
-		numRoutines++
 
 		for i := 0; i < numRoutines; i++ {
 			err := <-errCh

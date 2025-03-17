@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"gpt4cli/version"
+	"gpt4cli-cli/version"
 
 	"github.com/spf13/cobra"
 )

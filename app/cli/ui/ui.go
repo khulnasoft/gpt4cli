@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"gpt4cli/api"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/term"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/pkg/browser"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func OpenAuthenticatedURL(msg, path string) {
@@ -22,7 +22,7 @@ func OpenAuthenticatedURL(msg, path string) {
 	}
 
 	apiHost := api.GetApiHost()
-	appHost := strings.Replace(apiHost, "api.", "app.", 1)
+	appHost := strings.Replace(apiHost, "api-v2.", "app.", 1)
 
 	token := shared.UiSignInToken{
 		Pin:        signInCode,
@@ -43,7 +43,7 @@ func OpenAuthenticatedURL(msg, path string) {
 
 func OpenUnauthenticatedCloudURL(msg, path string) {
 	apiHost := api.GetApiHost()
-	appHost := strings.Replace(apiHost, "api.", "app.", 1)
+	appHost := strings.Replace(apiHost, "api-v2.", "app.", 1)
 
 	url := fmt.Sprintf("%s%s", appHost, path)
 

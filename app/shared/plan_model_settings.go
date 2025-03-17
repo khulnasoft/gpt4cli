@@ -1,56 +1,5 @@
 package shared
 
-type ModelProvider string
-
-const (
-	ModelProviderOpenAI ModelProvider = "openai"
-	// ModelProviderTogether   ModelProvider = "together" // removing for now to simplify
-	ModelProviderOpenRouter ModelProvider = "openrouter"
-	ModelProviderCustom     ModelProvider = "custom"
-)
-
-var AllModelProviders = []string{
-	string(ModelProviderOpenAI),
-	string(ModelProviderOpenRouter),
-	// string(ModelProviderTogether),
-	string(ModelProviderCustom),
-}
-
-var BaseUrlByProvider = map[ModelProvider]string{
-	ModelProviderOpenAI: OpenAIV1BaseUrl,
-	// ModelProviderTogether:   "https://api.together.xyz/v1", // removing for now to simplify
-	ModelProviderOpenRouter: "https://openrouter.ai/api/v1",
-}
-
-var ApiKeyByProvider = map[ModelProvider]string{
-	ModelProviderOpenAI: OpenAIEnvVar,
-	// ModelProviderTogether:   "TOGETHER_API_KEY", // removing for now to simplify
-	ModelProviderOpenRouter: "OPENROUTER_API_KEY",
-}
-
-type ModelRole string
-
-const (
-	ModelRolePlanner          ModelRole = "planner"
-	ModelRolePlanSummary      ModelRole = "summarizer"
-	ModelRoleBuilder          ModelRole = "builder"
-	ModelRoleWholeFileBuilder ModelRole = "whole-file-builder"
-	ModelRoleName             ModelRole = "names"
-	ModelRoleCommitMsg        ModelRole = "commit-messages"
-	ModelRoleExecStatus       ModelRole = "auto-continue"
-	ModelRoleSearch           ModelRole = "search"
-)
-
-var AllModelRoles = []ModelRole{ModelRolePlanner, ModelRolePlanSummary, ModelRoleBuilder, ModelRoleWholeFileBuilder, ModelRoleName, ModelRoleCommitMsg, ModelRoleExecStatus}
-var ModelRoleDescriptions = map[ModelRole]string{
-	ModelRolePlanner:          "replies to prompts and makes plans",
-	ModelRolePlanSummary:      "summarizes conversations exceeding max-convo-tokens",
-	ModelRoleBuilder:          "builds a plan into file diffs",
-	ModelRoleWholeFileBuilder: "builds a plan into file diffs by writing the entire file",
-	ModelRoleName:             "names plans",
-	ModelRoleCommitMsg:        "writes commit messages",
-	ModelRoleExecStatus:       "determines whether to auto-continue",
-}
 var SettingDescriptions = map[string]string{
 	"max-convo-tokens":       "max conversation 🪙 before summarization",
 	"max-tokens":             "overall 🪙 limit",
@@ -62,9 +11,81 @@ var ModelOverridePropsDasherized = []string{"max-convo-tokens", "max-tokens", "r
 func (ps PlanSettings) GetPlannerMaxTokens() int {
 	if ps.ModelOverrides.MaxTokens == nil {
 		if ps.ModelPack == nil {
-			return DefaultModelPack.Planner.BaseModelConfig.MaxTokens
+			defaultPlanner := DefaultModelPack.Planner
+			return defaultPlanner.GetFinalLargeContextFallback().BaseModelConfig.MaxTokens
 		} else {
-			return ps.ModelPack.Planner.BaseModelConfig.MaxTokens
+			planner := ps.ModelPack.Planner
+			return planner.GetFinalLargeContextFallback().BaseModelConfig.MaxTokens
+		}
+	} else {
+		return *ps.ModelOverrides.MaxTokens
+	}
+}
+
+func (ps PlanSettings) GetPlannerMaxReservedOutputTokens() int {
+	if ps.ModelOverrides.MaxTokens == nil {
+		if ps.ModelPack == nil {
+			defaultPlanner := DefaultModelPack.Planner
+			return defaultPlanner.GetFinalLargeContextFallback().GetReservedOutputTokens()
+		} else {
+			planner := ps.ModelPack.Planner
+			return planner.GetFinalLargeContextFallback().GetReservedOutputTokens()
+		}
+	} else {
+		return *ps.ModelOverrides.MaxTokens
+	}
+}
+
+func (ps PlanSettings) GetArchitectMaxTokens() int {
+	if ps.ModelOverrides.MaxTokens == nil {
+		if ps.ModelPack == nil {
+			defaultLoader := DefaultModelPack.GetArchitect()
+			return defaultLoader.GetFinalLargeContextFallback().BaseModelConfig.MaxTokens
+		} else {
+			loader := ps.ModelPack.GetArchitect()
+			return loader.GetFinalLargeContextFallback().BaseModelConfig.MaxTokens
+		}
+	} else {
+		return *ps.ModelOverrides.MaxTokens
+	}
+}
+
+func (ps PlanSettings) GetArchitectMaxReservedOutputTokens() int {
+	if ps.ModelOverrides.MaxTokens == nil {
+		if ps.ModelPack == nil {
+			defaultLoader := DefaultModelPack.GetArchitect()
+			return defaultLoader.GetFinalLargeContextFallback().GetReservedOutputTokens()
+		} else {
+			loader := ps.ModelPack.GetArchitect()
+			return loader.GetFinalLargeContextFallback().GetReservedOutputTokens()
+		}
+	} else {
+		return *ps.ModelOverrides.MaxTokens
+	}
+}
+
+func (ps PlanSettings) GetWholeFileBuilderMaxTokens() int {
+	if ps.ModelOverrides.MaxTokens == nil {
+		if ps.ModelPack == nil {
+			defaultBuilder := DefaultModelPack.WholeFileBuilder
+			return defaultBuilder.GetFinalLargeContextFallback().BaseModelConfig.MaxTokens
+		} else {
+			builder := ps.ModelPack.WholeFileBuilder
+			return builder.GetFinalLargeContextFallback().BaseModelConfig.MaxTokens
+		}
+	} else {
+		return *ps.ModelOverrides.MaxTokens
+	}
+}
+
+func (ps PlanSettings) GetWholeFileBuilderMaxReservedOutputTokens() int {
+	if ps.ModelOverrides.MaxTokens == nil {
+		if ps.ModelPack == nil {
+			defaultBuilder := DefaultModelPack.WholeFileBuilder
+			return defaultBuilder.GetFinalLargeOutputFallback().GetReservedOutputTokens()
+		} else {
+			builder := ps.ModelPack.WholeFileBuilder
+			return builder.GetFinalLargeOutputFallback().GetReservedOutputTokens()
 		}
 	} else {
 		return *ps.ModelOverrides.MaxTokens
@@ -74,29 +95,36 @@ func (ps PlanSettings) GetPlannerMaxTokens() int {
 func (ps PlanSettings) GetPlannerMaxConvoTokens() int {
 	if ps.ModelOverrides.MaxConvoTokens == nil {
 		if ps.ModelPack == nil {
-			return DefaultModelPack.Planner.PlannerModelConfig.MaxConvoTokens
+			defaultPlanner := DefaultModelPack.Planner
+			return defaultPlanner.GetFinalLargeContextFallback().MaxConvoTokens
 		} else {
-			return ps.ModelPack.Planner.PlannerModelConfig.MaxConvoTokens
+			planner := ps.ModelPack.Planner
+			return planner.GetFinalLargeContextFallback().MaxConvoTokens
 		}
 	} else {
 		return *ps.ModelOverrides.MaxConvoTokens
 	}
 }
 
-func (ps PlanSettings) GetPlannerReservedOutputTokens() int {
-	if ps.ModelOverrides.ReservedOutputTokens == nil {
-		if ps.ModelPack == nil {
-			return DefaultModelPack.Planner.PlannerModelConfig.ReservedOutputTokens
-		} else {
-			return ps.ModelPack.Planner.PlannerModelConfig.ReservedOutputTokens
-		}
-	} else {
-		return *ps.ModelOverrides.ReservedOutputTokens
-	}
+func (ps PlanSettings) GetPlannerEffectiveMaxTokens() int {
+	maxPlannerTokens := ps.GetPlannerMaxTokens()
+	maxReservedOutputTokens := ps.GetPlannerMaxReservedOutputTokens()
+
+	return maxPlannerTokens - maxReservedOutputTokens
 }
 
-func (ps PlanSettings) GetPlannerEffectiveMaxTokens() int {
-	return ps.GetPlannerMaxTokens() - ps.GetPlannerReservedOutputTokens()
+func (ps PlanSettings) GetArchitectEffectiveMaxTokens() int {
+	maxArchitectTokens := ps.GetArchitectMaxTokens()
+	maxReservedOutputTokens := ps.GetArchitectMaxReservedOutputTokens()
+
+	return maxArchitectTokens - maxReservedOutputTokens
+}
+
+func (ps PlanSettings) GetWholeFileBuilderEffectiveMaxTokens() int {
+	maxWholeFileBuilderTokens := ps.GetWholeFileBuilderMaxTokens()
+	maxReservedOutputTokens := ps.GetWholeFileBuilderMaxReservedOutputTokens()
+
+	return maxWholeFileBuilderTokens - maxReservedOutputTokens
 }
 
 func (ps PlanSettings) GetRequiredEnvVars() map[string]bool {
@@ -114,6 +142,8 @@ func (ps PlanSettings) GetRequiredEnvVars() map[string]bool {
 	envVars[ms.Namer.BaseModelConfig.ApiKeyEnvVar] = true
 	envVars[ms.CommitMsg.BaseModelConfig.ApiKeyEnvVar] = true
 	envVars[ms.ExecStatus.BaseModelConfig.ApiKeyEnvVar] = true
+	envVars[ms.Architect.BaseModelConfig.ApiKeyEnvVar] = true
+	envVars[ms.Coder.BaseModelConfig.ApiKeyEnvVar] = true
 
 	// for backward compatibility with <= 0.8.4 server versions
 	if len(envVars) == 0 {

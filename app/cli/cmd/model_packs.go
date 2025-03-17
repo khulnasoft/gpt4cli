@@ -3,15 +3,16 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"gpt4cli/api"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/term"
+	"gpt4cli-cli/api"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/term"
 	"strconv"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -202,13 +203,23 @@ func createModelPack(cmd *cobra.Command, args []string) {
 
 	// Selecting models for each role
 	mp.Planner = getPlannerRoleConfig(customModels)
-	mp.PlanSummary = getModelRoleConfig(customModels, shared.ModelRolePlanSummary)
+
+	contextLoader := getModelRoleConfig(customModels, shared.ModelRoleArchitect)
+	mp.Architect = &contextLoader
+
+	coder := getModelRoleConfig(customModels, shared.ModelRoleCoder)
+	mp.Coder = &coder
+
 	mp.Builder = getModelRoleConfig(customModels, shared.ModelRoleBuilder)
-	mp.Namer = getModelRoleConfig(customModels, shared.ModelRoleName)
-	mp.CommitMsg = getModelRoleConfig(customModels, shared.ModelRoleCommitMsg)
-	mp.ExecStatus = getModelRoleConfig(customModels, shared.ModelRoleExecStatus)
+
 	wholeFileBuilder := getModelRoleConfig(customModels, shared.ModelRoleWholeFileBuilder)
 	mp.WholeFileBuilder = &wholeFileBuilder
+
+	mp.Namer = getModelRoleConfig(customModels, shared.ModelRoleName)
+	mp.CommitMsg = getModelRoleConfig(customModels, shared.ModelRoleCommitMsg)
+
+	mp.PlanSummary = getModelRoleConfig(customModels, shared.ModelRolePlanSummary)
+	mp.ExecStatus = getModelRoleConfig(customModels, shared.ModelRoleExecStatus)
 
 	term.StartSpinner("")
 	apiErr = api.Client.CreateModelPack(mp)
@@ -254,11 +265,24 @@ func getModelWithRoleConfig(customModels []*shared.AvailableModel, modelRole sha
 		term.OutputErrorAndExit("Invalid number for top P: %v", err)
 	}
 
+	var reservedOutputTokens int
+	if modelRole == shared.ModelRoleBuilder || modelRole == shared.ModelRolePlanner || modelRole == shared.ModelRoleWholeFileBuilder {
+		reservedOutputTokensStr, err := term.GetUserStringInputWithDefault("Reserved output tokens for "+role+":", fmt.Sprintf("%d", shared.DefaultConfigByRole[modelRole].ReservedOutputTokens))
+		if err != nil {
+			term.OutputErrorAndExit("Error reading reserved output tokens: %v", err)
+		}
+		reservedOutputTokens, err = strconv.Atoi(reservedOutputTokensStr)
+		if err != nil {
+			term.OutputErrorAndExit("Invalid number for reserved output tokens: %v", err)
+		}
+	}
+
 	return model, shared.ModelRoleConfig{
-		Role:            modelRole,
-		BaseModelConfig: model.BaseModelConfig,
-		Temperature:     float32(temperature),
-		TopP:            float32(topP),
+		Role:                 modelRole,
+		BaseModelConfig:      model.BaseModelConfig,
+		Temperature:          float32(temperature),
+		TopP:                 float32(topP),
+		ReservedOutputTokens: reservedOutputTokens,
 	}
 }
 
@@ -268,8 +292,7 @@ func getPlannerRoleConfig(customModels []*shared.AvailableModel) shared.PlannerR
 	return shared.PlannerRoleConfig{
 		ModelRoleConfig: modelConfig,
 		PlannerModelConfig: shared.PlannerModelConfig{
-			MaxConvoTokens:       model.DefaultMaxConvoTokens,
-			ReservedOutputTokens: model.DefaultReservedOutputTokens,
+			MaxConvoTokens: model.DefaultMaxConvoTokens,
 		},
 	}
 }

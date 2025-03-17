@@ -18,6 +18,9 @@ func init() {
 	log.Println("Gpt4cli server home dir:", home)
 	log.Println("os.Getenv(GPT4CLI_BASE_DIR):", os.Getenv("GPT4CLI_BASE_DIR"))
 	log.Println("GOENV:", os.Getenv("GOENV"))
+	if os.Getenv("GOENV") == "development" && os.Getenv("LOCAL_MODE") == "1" {
+		log.Println("Local mode enabled")
+	}
 
 	BaseDir = os.Getenv("GPT4CLI_BASE_DIR")
 
@@ -98,6 +101,10 @@ func getPlanConversationDir(orgId, planId string) string {
 
 func getPlanResultsDir(orgId, planId string) string {
 	return filepath.Join(getPlanDir(orgId, planId), "results")
+}
+
+func getPlanAppliesDir(orgId, planId string) string {
+	return filepath.Join(getPlanDir(orgId, planId), "applies")
 }
 
 func getPlanDescriptionsDir(orgId, planId string) string {

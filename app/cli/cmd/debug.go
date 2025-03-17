@@ -1,18 +1,28 @@
 package cmd
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
-	"gpt4cli/auth"
-	"gpt4cli/lib"
-	"gpt4cli/plan_exec"
-	"gpt4cli/term"
+	"os/signal"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/lib"
+	"gpt4cli-cli/plan_exec"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	shared "gpt4cli-shared"
 
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -28,12 +38,13 @@ var debugCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(debugCmd)
-	debugCmd.Flags().BoolVarP(&autoCommit, "commit", "c", false, "Commit changes to git on each try")
+	debugCmd.Flags().BoolVarP(&autoCommit, "commit", "c", false, "Commit changes after successful execution")
 }
 
 func doDebug(cmd *cobra.Command, args []string) {
 	auth.MustResolveAuthWithOrg()
 	lib.MustResolveProject()
+	mustSetPlanExecFlags(cmd)
 
 	if lib.CurrentPlanId == "" {
 		term.OutputNoCurrentPlanErrorAndExit()
@@ -70,27 +81,120 @@ func doDebug(cmd *cobra.Command, args []string) {
 
 	// Execute command and handle retries
 	for attempt := 0; attempt < tries; attempt++ {
-		term.StartSpinner("")
 		// Use shell to handle operators like && and |
-		execCmd := exec.Command("sh", "-c", cmdStr)
+		shellCmdStr := "set -euo pipefail; " + cmdStr
+		execCmd := exec.Command("sh", "-c", shellCmdStr)
 		execCmd.Dir = cwd
 		execCmd.Env = os.Environ()
+		lib.SetPlatformSpecificAttrs(execCmd)
 
-		output, err := execCmd.CombinedOutput()
+		pipe, err := execCmd.StdoutPipe()
+		if err != nil {
+			term.StopSpinner()
+			term.OutputErrorAndExit("Failed to create pipe: %v", err)
+		}
+		execCmd.Stderr = execCmd.Stdout
+
+		if err := execCmd.Start(); err != nil {
+			term.StopSpinner()
+			term.OutputErrorAndExit("Failed to start command: %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		var interrupted atomic.Bool
+		var interruptHandled atomic.Bool
+		var interruptWG sync.WaitGroup
+
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+		interruptWG.Add(1)
+		go func() {
+			defer interruptWG.Done()
+			for {
+				select {
+				case <-sigChan:
+					if interruptHandled.CompareAndSwap(false, true) {
+						fmt.Println()
+						color.New(term.ColorHiYellow, color.Bold).Println("\n👉 Caught interrupt. Exiting gracefully...")
+						fmt.Println()
+
+						interrupted.Store(true)
+
+						if err := lib.KillProcessGroup(execCmd, syscall.SIGINT); err != nil {
+							log.Printf("Failed to send SIGINT to process group: %v", err)
+						}
+
+						select {
+						case <-time.After(2 * time.Second):
+							fmt.Println()
+							color.New(term.ColorHiYellow, color.Bold).Println("👉 Commands didn't exit after 2 seconds. Sending SIGKILL.")
+							fmt.Println()
+							if err := lib.KillProcessGroup(execCmd, syscall.SIGKILL); err != nil {
+								log.Printf("Failed to send SIGKILL to process group: %v", err)
+							}
+						case <-ctx.Done():
+							return
+						}
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+
+		var outputBuilder strings.Builder
+		scanner := bufio.NewScanner(pipe)
+		go func() {
+			for scanner.Scan() {
+				line := scanner.Text()
+				fmt.Println(line)
+				outputBuilder.WriteString(line + "\n")
+			}
+		}()
+
+		waitErr := execCmd.Wait()
+
+		cancel()
+		interruptWG.Wait()
+		signal.Stop(sigChan)
+		close(sigChan)
+
+		if scanErr := scanner.Err(); scanErr != nil {
+			log.Printf("⚠️ Scanner error reading subprocess output: %v", scanErr)
+		}
 
 		term.StopSpinner()
 
-		outputStr := string(output)
-		if outputStr == "" && err != nil {
-			// If no output but error occurred, include error in output
-			outputStr = err.Error()
+		outputStr := outputBuilder.String()
+		if outputStr == "" && waitErr != nil {
+			outputStr = waitErr.Error()
 		}
 
 		if outputStr != "" {
 			fmt.Println(outputStr)
 		}
 
-		if err == nil {
+		didSucceed := waitErr == nil
+
+		if interrupted.Load() {
+			fmt.Println()
+			color.New(term.ColorHiYellow, color.Bold).Println("👉  Execution interrupted")
+
+			res, canceled, err := term.ConfirmYesNoCancel("Did the command succeed?")
+
+			if err != nil {
+				term.OutputErrorAndExit("Failed to get confirmation user input: %s", err)
+			}
+
+			didSucceed = res
+
+			if canceled {
+				os.Exit(0)
+			}
+		}
+
+		if didSucceed {
 			if attempt == 0 {
 				fmt.Printf("✅ Command %s succeeded on first try\n", color.New(color.Bold, term.ColorHiCyan).Sprintf(cmdStr))
 			} else {
@@ -109,36 +213,45 @@ func doDebug(cmd *cobra.Command, args []string) {
 		}
 
 		// Prepare prompt for TellPlan
-		exitErr, ok := err.(*exec.ExitError)
+		exitErr, ok := waitErr.(*exec.ExitError)
 		status := -1
 		if ok {
 			status = exitErr.ExitCode()
 		}
 
 		prompt := fmt.Sprintf("'%s' failed with exit status %d. Output:\n\n%s\n\n--\n\n",
-			strings.Join(cmdArgs, " "), status, string(output))
+			strings.Join(cmdArgs, " "), status, outputStr)
+
+		tellFlags := types.TellFlags{
+			AutoContext: tellAutoContext,
+			ExecEnabled: false,
+			IsUserDebug: true,
+		}
 
 		plan_exec.TellPlan(plan_exec.ExecParams{
 			CurrentPlanId: lib.CurrentPlanId,
 			CurrentBranch: lib.CurrentBranch,
 			ApiKeys:       apiKeys,
-			CheckOutdatedContext: func(maybeContexts []*shared.Context) (bool, bool, error) {
-				return lib.CheckOutdatedContextWithOutput(false, true, maybeContexts)
+			CheckOutdatedContext: func(maybeContexts []*shared.Context, projectPaths *types.ProjectPaths) (bool, bool, error) {
+				return lib.CheckOutdatedContextWithOutput(true, true, maybeContexts, projectPaths)
 			},
-		}, prompt, plan_exec.TellFlags{IsUserDebug: true})
+		}, prompt, tellFlags)
 
-		flags := lib.ApplyFlags{
+		applyFlags := types.ApplyFlags{
 			AutoConfirm: true,
 			AutoCommit:  autoCommit,
 			NoCommit:    !autoCommit,
-			NoExec:      true,
+			NoExec:      false,
+			AutoExec:    true,
 		}
 
-		lib.MustApplyPlan(
-			lib.CurrentPlanId,
-			lib.CurrentBranch,
-			flags,
-			plan_exec.GetOnApplyExecFail(flags),
-		)
+		lib.MustApplyPlan(lib.ApplyPlanParams{
+			PlanId:      lib.CurrentPlanId,
+			Branch:      lib.CurrentBranch,
+			ApplyFlags:  applyFlags,
+			TellFlags:   tellFlags,
+			OnExecFail:  plan_exec.GetOnApplyExecFailWithCommand(applyFlags, tellFlags, cmdStr),
+			ExecCommand: cmdStr,
+		})
 	}
 }

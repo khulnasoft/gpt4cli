@@ -5,7 +5,7 @@ import (
 	"gpt4cli-server/db"
 	"gpt4cli-server/hooks"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func toApiOrgs(orgs []*db.Org) ([]*shared.Org, *shared.ApiError) {

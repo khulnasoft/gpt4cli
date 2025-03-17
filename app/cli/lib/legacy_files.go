@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"gpt4cli/fs"
-	"gpt4cli/term"
-	"gpt4cli/types"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/term"
+	"gpt4cli-cli/types"
 )
 
 func MigrateLegacyProjectFile(currentUserId string) {

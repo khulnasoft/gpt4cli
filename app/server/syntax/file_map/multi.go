@@ -11,7 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
 	tree_sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -81,13 +82,12 @@ func ProcessMapTrees(ctx context.Context, inputs map[string]string) (MapTrees, e
 			var parser *tree_sitter.Parser
 			file := filepath.Base(path)
 			if strings.Contains(strings.ToLower(file), "dockerfile") {
-				parser = syntax.GetParserForLanguage(shared.TreeSitterLanguageDockerfile)
+				parser = syntax.GetParserForLanguage(shared.LanguageDockerfile)
 			} else {
-				ext := filepath.Ext(path)
-				parser, _, _, _ = syntax.GetParserForExt(ext)
+				parser, _, _, _ = syntax.GetParserForPath(path)
 
 				if parser == nil {
-					errCh <- fmt.Errorf("unsupported file type: %s", ext)
+					errCh <- fmt.Errorf("unsupported file type: %s", path)
 					return
 				}
 			}
@@ -129,12 +129,13 @@ func (m MapTrees) CombinedTrees() string {
 	for _, path := range paths {
 		body := m[path]
 		body = strings.TrimSpace(body)
-		if body == "" {
-			continue
-		}
 		fileHeading := fmt.Sprintf("\n### %s\n", path)
 		combinedMap.WriteString(fileHeading)
-		combinedMap.WriteString(body)
+		if body == "" {
+			combinedMap.WriteString("[NO MAP]\n")
+		} else {
+			combinedMap.WriteString(body)
+		}
 		combinedMap.WriteString("\n")
 	}
 	return combinedMap.String()

@@ -3,8 +3,9 @@ package db
 import (
 	"fmt"
 
+	shared "gpt4cli-shared"
+
 	"github.com/jmoiron/sqlx"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func GetPlanConfig(planId string) (*shared.PlanConfig, error) {

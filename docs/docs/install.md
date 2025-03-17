@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 sidebar_label: Install
 ---
 
@@ -8,7 +8,7 @@ sidebar_label: Install
 ## Quick Install
 
 ```bash
-curl -sL https://gpt4cli.khulnasoft.com/install.sh | bash
+curl -sL https://v2.khulnasoft.com/install.sh | bash
 ```
 
 ## Manual install
@@ -19,7 +19,7 @@ Grab the appropriate binary for your platform from the latest [release](https://
 
 ```bash
 git clone https://github.com/khulnasoft/gpt4cli.git
-git clone https://github.com/khulnasoft-lab/survey.git
+git checkout v2
 cd gpt4cli/app/cli
 go build -ldflags "-X gpt4cli/version.Version=$(cat version.txt)"
 mv gpt4cli /usr/local/bin # adapt as needed for your system

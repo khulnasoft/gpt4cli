@@ -2,21 +2,20 @@ package plan
 
 import (
 	"gpt4cli-server/db"
+	"gpt4cli-server/hooks"
+	"gpt4cli-server/model"
 	"gpt4cli-server/types"
 
-	"github.com/khulnasoft/gpt4cli/shared"
-	"github.com/sashabaranov/go-openai"
+	shared "gpt4cli-shared"
+
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
 const MaxBuildErrorRetries = 3 // uses semi-exponential backoff so be careful with this
 
-const FixSyntaxRetries = 2
-const FixSyntaxEpochs = 2
-
 type activeBuildStreamState struct {
-	tellState     *activeTellStreamState
-	clients       map[string]*openai.Client
+	modelStreamId string
+	clients       map[string]model.ClientInfo
 	auth          *types.ServerAuth
 	currentOrgId  string
 	currentUserId string
@@ -36,28 +35,13 @@ type activeBuildStreamFileState struct {
 	activeBuild                *types.ActiveBuild
 	preBuildState              string
 	parser                     *sitter.Parser
-	language                   shared.TreeSitterLanguage
+	language                   shared.Language
+	syntaxCheckTimedOut        bool
 	preBuildStateSyntaxInvalid bool
+	validationNumRetry         int
+	wholeFileNumRetry          int
+	isNewFile                  bool
+	contextPart                *db.Context
 
-	structuredEditNumRetry int
-	expandRefsNumRetry     int
-	lineNumsNumRetry       int
-	verifyFileNumRetry     int
-	fixFileNumRetry        int
-
-	syntaxNumRetry int
-	syntaxNumEpoch int
-
-	isFixingSyntax bool
-	isFixingOther  bool
-
-	streamedChangesWithLineNums []*shared.StreamedChangeWithLineNums
-	updated                     string
-
-	verificationErrors string
-	syntaxErrors       []string
-
-	isNewFile bool
-
-	inputTokens int
+	builderRun hooks.DidFinishBuilderRunParams
 }

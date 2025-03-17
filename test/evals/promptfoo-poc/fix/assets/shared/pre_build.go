@@ -8,7 +8,6 @@ import (
 	"gpt4cli/lib"
 	"gpt4cli/term"
 
-	"github.com/khulnasoft/gpt4cli/shared"
 	"github.com/spf13/cobra"
 )
 

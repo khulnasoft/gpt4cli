@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"gpt4cli/auth"
-	"gpt4cli/fs"
-	"gpt4cli/types"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/fs"
+	"gpt4cli-cli/types"
 	"sync"
 )
 

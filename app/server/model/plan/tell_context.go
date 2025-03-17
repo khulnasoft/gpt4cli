@@ -2,28 +2,77 @@ package plan
 
 import (
 	"fmt"
+	"log"
+	"net/http"
+	"gpt4cli-server/types"
+	"regexp"
 	"strings"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
+
+	"github.com/sashabaranov/go-openai"
 )
 
-func (state *activeTellStreamState) formatModelContext(includeMaps, includeTrees, isImplementationStage, execEnabled bool) (string, int, error) {
+type formatModelContextParams struct {
+	includeMaps         bool
+	smartContextEnabled bool
+	execEnabled         bool
+	baseOnly            bool
+	cacheControl        bool
+	activeOnly          bool
+	autoOnly            bool
+	activatedPaths      map[string]bool
+}
+
+func (state *activeTellStreamState) formatModelContext(params formatModelContextParams) *types.ExtendedChatMessagePart {
+	log.Println("Tell plan - formatModelContext")
+
+	includeMaps := params.includeMaps
+	smartContextEnabled := params.smartContextEnabled
+	execEnabled := params.execEnabled
+	currentStage := state.currentStage
+
+	basicOnly := params.baseOnly
+	activeOnly := params.activeOnly
+	autoOnly := params.autoOnly
+	activatedPaths := params.activatedPaths
+
+	if activatedPaths == nil {
+		activatedPaths = map[string]bool{}
+	}
+
 	var contextMessages []string = []string{
 		"### LATEST PLAN CONTEXT ###",
 	}
-	var numTokens int
 	addedFilesSet := map[string]bool{}
 
 	uses := map[string]bool{}
-	if isImplementationStage && state.currentSubtask != nil {
+	if currentStage.TellStage == shared.TellStageImplementation && smartContextEnabled && state.currentSubtask != nil {
+		log.Println("Tell plan - formatModelContext - implementation stage - smart context enabled for current subtask")
 		for _, path := range state.currentSubtask.UsesFiles {
 			uses[path] = true
 		}
-
+		log.Printf("Tell plan - formatModelContext - uses: %v\n", uses)
 	}
 
+	// log.Println("Tell plan - formatModelContext - state.modelContext:\n", spew.Sdump(state.modelContext))
+
 	for _, part := range state.modelContext {
-		if isImplementationStage && state.currentSubtask != nil && part.ContextType == shared.ContextFileType && !uses[part.FilePath] {
+		if !(part.ContextType == shared.ContextMapType && includeMaps) {
+			if basicOnly && part.AutoLoaded {
+				continue
+			}
+
+			if autoOnly && !part.AutoLoaded {
+				continue
+			}
+		}
+
+		if currentStage.TellStage == shared.TellStageImplementation && smartContextEnabled && state.currentSubtask != nil && part.ContextType == shared.ContextFileType && !uses[part.FilePath] {
+			continue
+		}
+
+		if activeOnly && !activatedPaths[part.FilePath] {
 			continue
 		}
 
@@ -32,9 +81,6 @@ func (state *activeTellStreamState) formatModelContext(includeMaps, includeTrees
 		var args []any
 
 		if part.ContextType == shared.ContextDirectoryTreeType {
-			if !includeTrees {
-				continue
-			}
 			fmtStr = "\n\n- %s | directory tree:\n\n```\n%s\n```"
 			args = append(args, part.FilePath, part.Body)
 		} else if part.ContextType == shared.ContextFileType {
@@ -69,27 +115,19 @@ func (state *activeTellStreamState) formatModelContext(includeMaps, includeTrees
 			args = append(args, part.Name, part.Body)
 		}
 
-		if part.ContextType == shared.ContextImageType {
-			numTokens += part.NumTokens
-		} else {
-			numContextTokens, err := shared.GetNumTokens(fmt.Sprintf(fmtStr, ""))
-			if err != nil {
-				err = fmt.Errorf("failed to get the number of tokens in the context: %v", err)
-				return "", 0, err
-			}
-
-			numTokens += part.NumTokens + numContextTokens
+		if part.ContextType != shared.ContextImageType {
 			message = fmt.Sprintf(fmtStr, args...)
 			contextMessages = append(contextMessages, message)
 		}
 
+		log.Printf("Tell plan - formatModelContext - added context - %s\n", part.Name)
 	}
 
 	// Add any current files in plan that weren't added to the context
 	for filePath, body := range state.currentPlanState.CurrentPlanFiles.Files {
 		if !addedFilesSet[filePath] {
 
-			if isImplementationStage && !uses[filePath] {
+			if currentStage.TellStage == shared.TellStageImplementation && smartContextEnabled && !uses[filePath] {
 				continue
 			}
 
@@ -97,7 +135,13 @@ func (state *activeTellStreamState) formatModelContext(includeMaps, includeTrees
 				continue
 			}
 
+			if activeOnly && !activatedPaths[filePath] {
+				continue
+			}
+
 			contextMessages = append(contextMessages, fmt.Sprintf("\n\n- %s:\n\n```\n%s\n```", filePath, body))
+
+			log.Printf("Tell plan - formatModelContext - added current plan file - %s\n", filePath)
 		}
 	}
 
@@ -107,70 +151,154 @@ func (state *activeTellStreamState) formatModelContext(includeMaps, includeTrees
 			contextMessages = append(contextMessages, fmt.Sprintf("- %s", path))
 		}
 		contextMessages = append(contextMessages, "These files have been *removed* and are no longer in the plan. If you want to re-add them to the plan, you must explicitly create them again.")
+
+		log.Println("Tell plan - formatModelContext - added removed files")
+		log.Println(contextMessages)
 	}
 
-	if execEnabled {
-		contextMessages = append(contextMessages, state.currentPlanState.ExecHistory())
+	if execEnabled &&
+		// don't show _apply.sh history and content if smart context is enabled and the current subtask doesn't use it
+		!(currentStage.TellStage == shared.TellStageImplementation && smartContextEnabled && state.currentSubtask != nil && !uses["_apply.sh"]) {
+
+		execHistory := state.currentPlanState.ExecHistory()
+
+		contextMessages = append(contextMessages, execHistory)
 
 		scriptContent, ok := state.currentPlanState.CurrentPlanFiles.Files["_apply.sh"]
+		var isEmpty bool
 		if !ok || scriptContent == "" {
 			scriptContent = "[empty]"
+			isEmpty = true
 		}
 
 		contextMessages = append(contextMessages, "*Current* state of _apply.sh script:")
 		contextMessages = append(contextMessages, fmt.Sprintf("\n\n- _apply.sh:\n\n```\n%s\n```", scriptContent))
-	}
 
-	return strings.Join(contextMessages, "\n### END OF CONTEXT ###\n"), numTokens, nil
-}
+		if isEmpty && currentStage.TellStage == shared.TellStagePlanning && currentStage.PlanningPhase != shared.PlanningPhaseContext {
+			contextMessages = append(contextMessages, "The _apply.sh script is *empty*. You ABSOLUTELY MUST include a '### Commands' section in your response prior to the '### Tasks' section that evaluates whether any commands should be written to _apply.sh during the plan. This is MANDATORY. Do NOT UNDER ANY CIRCUMSTANCES omit this section. If you determine that commands should be added or updated in _apply.sh, you MUST also create a subtask referencing _apply.sh in the '### Tasks' section.")
 
-func (state *activeTellStreamState) checkAutoLoadContext() []string {
-	activePlan := GetActivePlan(state.plan.Id, state.branch)
-
-	if activePlan == nil {
-		return nil
-	}
-
-	if !activePlan.AutoContext {
-		return nil
-	}
-
-	if state.req.IsUserContinue {
-		return nil
-	}
-
-	// only load context on the first iteration of a non-continue prompt
-	if state.iteration > 0 {
-		return nil
-	}
-
-	split := strings.Split(activePlan.CurrentReplyContent, "### Load Context")
-
-	if len(split) < 2 {
-		return nil
-	}
-
-	req := state.req
-
-	list := strings.Split(split[1], "\n")
-	files := []string{}
-
-	for _, line := range list {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "-") {
-			trimmed = strings.TrimPrefix(trimmed, "-")
-			trimmed = strings.ReplaceAll(trimmed, "`", "")
-			trimmed = strings.TrimSpace(trimmed)
-
-			if req.ProjectPaths[trimmed] {
-				files = append(files, trimmed)
+			if execHistory != "" {
+				contextMessages = append(contextMessages, "Consider the history of previously executed _apply.sh scripts when determining which commands to include in the new _apply.sh file. Are there any commands that should be run again after code changes? If so, mention them in the '### Commands' section and then include a subtask to include them in the _apply.sh file in the '### Tasks' section.")
 			}
 		}
 	}
 
-	return files
+	s := strings.Join(contextMessages, "\n\n") + "\n\n### END OF CONTEXT ###\n\n"
+
+	res := &types.ExtendedChatMessagePart{
+		Type: openai.ChatMessagePartTypeText,
+		Text: s,
+	}
+
+	if params.cacheControl {
+		res.CacheControl = &types.CacheControlSpec{
+			Type: types.CacheControlTypeEphemeral,
+		}
+	}
+
+	return res
+}
+
+var pathRegex = regexp.MustCompile("`(.+?)`")
+
+type checkAutoLoadContextResult struct {
+	autoLoadPaths []string
+	activatePaths map[string]bool
+}
+
+func (state *activeTellStreamState) checkAutoLoadContext() checkAutoLoadContextResult {
+	req := state.req
+	activePlan := state.activePlan
+	contextsByPath := activePlan.ContextsByPath
+	currentStage := state.currentStage
+
+	// can only auto load context in planning stage
+	// context phase is primary loading phase
+	// planning phase can still load additional context files as a backup
+	if currentStage.TellStage != shared.TellStagePlanning {
+		return checkAutoLoadContextResult{}
+	}
+
+	// for chat responses, only auto load context if we're in the context phase
+	if req.IsChatOnly && currentStage.PlanningPhase != shared.PlanningPhaseContext {
+		return checkAutoLoadContextResult{}
+	}
+
+	log.Printf("%d existing contexts by path\n", len(contextsByPath))
+
+	// pick out all potential file paths within backticks
+	matches := pathRegex.FindAllStringSubmatch(activePlan.CurrentReplyContent, -1)
+
+	toAutoLoad := map[string]bool{}
+	toActivate := map[string]bool{}
+
+	for _, match := range matches {
+		trimmed := strings.TrimSpace(match[1])
+		if trimmed == "" {
+			continue
+		}
+
+		if req.ProjectPaths[trimmed] {
+			toActivate[trimmed] = true
+			if contextsByPath[trimmed] == nil {
+				toAutoLoad[trimmed] = true
+			}
+		}
+	}
+
+	toAutoLoadPaths := []string{}
+	for path := range toAutoLoad {
+		toAutoLoadPaths = append(toAutoLoadPaths, path)
+	}
+
+	log.Printf("Tell plan - checkAutoLoadContext - toAutoLoad: %v\n", toAutoLoadPaths)
+	log.Printf("Tell plan - checkAutoLoadContext - toActivate: %v\n", toActivate)
+
+	return checkAutoLoadContextResult{
+		autoLoadPaths: toAutoLoadPaths,
+		activatePaths: toActivate,
+	}
+}
+
+func (state *activeTellStreamState) addImageContext() (int, bool) {
+	active := state.activePlan
+
+	var imageContextTokens int
+
+	for _, context := range state.modelContext {
+		if context.ContextType == shared.ContextImageType {
+			if !state.settings.ModelPack.Planner.BaseModelConfig.HasImageSupport {
+				err := fmt.Errorf("%s does not support images in context", state.settings.ModelPack.Planner.BaseModelConfig.ModelName)
+				log.Println(err)
+				active.StreamDoneCh <- &shared.ApiError{
+					Type:   shared.ApiErrorTypeOther,
+					Status: http.StatusBadRequest,
+					Msg:    "Model does not support images in context",
+				}
+				return 0, false
+			}
+
+			imageContextTokens += context.NumTokens
+
+			imageMessage := types.ExtendedChatMessage{
+				Role: openai.ChatMessageRoleUser,
+				Content: []types.ExtendedChatMessagePart{
+					{
+						Type: openai.ChatMessagePartTypeText,
+						Text: fmt.Sprintf("Image: %s", context.Name),
+					},
+					{
+						Type: openai.ChatMessagePartTypeImageURL,
+						ImageURL: &openai.ChatMessageImageURL{
+							URL:    shared.GetImageDataURI(context.Body, context.FilePath),
+							Detail: context.ImageDetail,
+						},
+					},
+				},
+			}
+			state.messages = append(state.messages, imageMessage)
+		}
+	}
+
+	return imageContextTokens, true
 }

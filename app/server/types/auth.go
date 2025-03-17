@@ -3,7 +3,7 @@ package types
 import (
 	"gpt4cli-server/db"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 type ServerAuth struct {

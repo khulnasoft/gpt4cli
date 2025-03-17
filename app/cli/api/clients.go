@@ -4,8 +4,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"gpt4cli/auth"
-	"gpt4cli/types"
+	"gpt4cli-cli/auth"
+	"gpt4cli-cli/types"
 	"time"
 )
 
@@ -22,10 +22,10 @@ func init() {
 	if os.Getenv("GPT4CLI_ENV") == "development" {
 		CloudApiHost = os.Getenv("GPT4CLI_API_HOST")
 		if CloudApiHost == "" {
-			CloudApiHost = "http://localhost:8080"
+			CloudApiHost = "http://localhost:8099"
 		}
 	} else {
-		CloudApiHost = "https://api.gpt4cli.khulnasoft.com"
+		CloudApiHost = "https://api-v2.khulnasoft.com"
 	}
 }
 

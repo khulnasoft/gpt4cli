@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"gpt4cli/term"
+	"gpt4cli-cli/term"
 	"sync"
+
+	shared "gpt4cli-shared"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 var ui *tea.Program
@@ -31,15 +32,21 @@ func StartStreamUI(prompt string, buildOnly bool) error {
 		os.Exit(0)
 	}
 
+	log.Println("Starting stream UI")
+
 	initial := initialModel(prestartReply, prompt, buildOnly)
 
 	mu.Lock()
 	ui = tea.NewProgram(initial, tea.WithAltScreen())
 	mu.Unlock()
 
+	log.Println("Running bubbletea program")
 	wg.Add(1)
 	m, err := ui.Run()
+	log.Println("Bubbletea program finished")
 	wg.Done()
+
+	log.Println("Stream UI finished")
 
 	if err != nil {
 		return fmt.Errorf("error running stream UI: %v", err)
@@ -92,6 +99,14 @@ func StartStreamUI(prompt string, buildOnly bool) error {
 		os.Exit(0)
 	}
 
+	if os.Getenv("GPT4CLI_REPL") != "" && os.Getenv("GPT4CLI_REPL_OUTPUT_FILE") != "" {
+		// write output to file
+		err := os.WriteFile(os.Getenv("GPT4CLI_REPL_OUTPUT_FILE"), []byte(mod.reply), 0644)
+		if err != nil {
+			log.Println("stream UI - error writing output to repl temp file: ", err)
+		}
+	}
+
 	return nil
 }
 
@@ -107,7 +122,6 @@ func Quit() {
 	mu.Unlock()
 
 	wg.Wait() // Wait for the UI to fully terminate
-
 }
 
 func Send(msg shared.StreamMessage) {
@@ -125,7 +139,6 @@ func Send(msg shared.StreamMessage) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	// log.Printf("sending stream message to UI: %s\n", msg.Type)
 	ui.Send(msg)
 }
 

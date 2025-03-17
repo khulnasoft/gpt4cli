@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"path/filepath"
 	"gpt4cli-server/db"
 	"gpt4cli-server/syntax"
 	"gpt4cli-server/types"
 
-	"github.com/khulnasoft/gpt4cli/shared"
+	shared "gpt4cli-shared"
 )
 
 func (state *activeBuildStreamState) loadPendingBuilds() (map[string][]*types.ActiveBuild, error) {
@@ -24,33 +23,23 @@ func (state *activeBuildStreamState) loadPendingBuilds() (map[string][]*types.Ac
 		log.Printf("Error activating plan: %v\n", err)
 	}
 
-	repoLockId, err := db.LockRepo(
-		db.LockRepoParams{
-			OrgId:    auth.OrgId,
-			UserId:   auth.User.Id,
-			PlanId:   plan.Id,
-			Branch:   branch,
-			Scope:    db.LockScopeRead,
-			Ctx:      active.Ctx,
-			CancelFn: active.CancelFn,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error locking repo for build: %v", err)
-	}
+	modelStreamId := active.ModelStreamId
+	state.modelStreamId = modelStreamId
 
 	var modelContext []*db.Context
 	var pendingBuildsByPath map[string][]*types.ActiveBuild
 	var settings *shared.PlanSettings
 
-	err = func() error {
-		defer func() {
-			err := db.DeleteRepoLock(repoLockId)
-			if err != nil {
-				log.Printf("Error unlocking repo: %v\n", err)
-			}
-		}()
-
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:    auth.OrgId,
+		UserId:   auth.User.Id,
+		PlanId:   plan.Id,
+		Branch:   branch,
+		Scope:    db.LockScopeRead,
+		Ctx:      active.Ctx,
+		CancelFn: active.CancelFn,
+		Reason:   "load pending builds",
+	}, func(repo *db.GitRepo) error {
 		errCh := make(chan error)
 
 		go func() {
@@ -99,10 +88,10 @@ func (state *activeBuildStreamState) loadPendingBuilds() (map[string][]*types.Ac
 			}
 		}
 		return nil
-	}()
+	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting plan data: %v", err)
 	}
 
 	UpdateActivePlan(plan.Id, branch, func(ap *types.ActivePlan) {
@@ -121,9 +110,7 @@ func (state *activeBuildStreamState) loadPendingBuilds() (map[string][]*types.Ac
 }
 
 func (state *activeBuildStreamFileState) loadBuildFile(activeBuild *types.ActiveBuild) error {
-
 	currentOrgId := state.currentOrgId
-	currentUserId := state.currentUserId
 	planId := state.plan.Id
 	branch := state.branch
 	filePath := state.filePath
@@ -136,24 +123,23 @@ func (state *activeBuildStreamFileState) loadBuildFile(activeBuild *types.Active
 
 	convoMessageId := activeBuild.ReplyId
 
-	ext := filepath.Ext(filePath)
-	parser, lang, backupParser, backupLang := syntax.GetParserForExt(ext)
+	parser, lang, fallbackParser, fallbackLang := syntax.GetParserForPath(filePath)
 
 	if parser != nil {
-		state.parser = parser
-		state.language = lang
-	} else if backupParser != nil {
-		state.parser = backupParser
-		state.language = backupLang
-	}
-
-	if state.parser != nil {
-		validationRes, err := syntax.Validate(activePlan.Ctx, filePath, state.preBuildState)
+		validationRes, err := syntax.ValidateWithParsers(activePlan.Ctx, lang, parser, fallbackLang, fallbackParser, state.preBuildState)
 		if err != nil {
 			log.Printf(" error validating original file syntax: %v\n", err)
 			return fmt.Errorf("error validating original file syntax: %v", err)
 		}
-		if validationRes.HasParser && !validationRes.TimedOut && !validationRes.Valid {
+
+		state.language = validationRes.Lang
+		state.parser = validationRes.Parser
+
+		state.builderRun.Lang = string(validationRes.Lang)
+
+		if validationRes.TimedOut {
+			state.syntaxCheckTimedOut = true
+		} else if !validationRes.Valid {
 			state.preBuildStateSyntaxInvalid = true
 		}
 	}
@@ -184,43 +170,17 @@ func (state *activeBuildStreamFileState) loadBuildFile(activeBuild *types.Active
 
 	log.Println("Locking repo for load build file")
 
-	repoLockId, err := db.LockRepo(
-		db.LockRepoParams{
-			OrgId:       currentOrgId,
-			UserId:      currentUserId,
-			PlanId:      planId,
-			Branch:      branch,
-			PlanBuildId: build.Id,
-			Scope:       db.LockScopeRead,
-			Ctx:         activePlan.Ctx,
-			CancelFn:    activePlan.CancelFn,
-		},
-	)
-	if err != nil {
-		log.Printf("Error locking repo for build file: %v\n", err)
-		UpdateActivePlan(activePlan.Id, activePlan.Branch, func(ap *types.ActivePlan) {
-			ap.IsBuildingByPath[filePath] = false
-		})
-		activePlan.StreamDoneCh <- &shared.ApiError{
-			Type:   shared.ApiErrorTypeOther,
-			Status: http.StatusInternalServerError,
-			Msg:    "Error locking repo for build file: " + err.Error(),
-		}
-		return err
-	}
-
-	log.Println("Locked repo for load build file")
-
-	err = func() error {
-		defer func() {
-			log.Printf("Unlocking repo for load build file")
-
-			err := db.DeleteRepoLock(repoLockId)
-			if err != nil {
-				log.Printf("Error unlocking repo: %v\n", err)
-			}
-		}()
-
+	err = db.ExecRepoOperation(db.ExecRepoOperationParams{
+		OrgId:       currentOrgId,
+		UserId:      state.activeBuildStreamState.currentUserId,
+		PlanId:      planId,
+		Branch:      branch,
+		PlanBuildId: build.Id,
+		Scope:       db.LockScopeRead,
+		Ctx:         activePlan.Ctx,
+		CancelFn:    activePlan.CancelFn,
+		Reason:      "load build file",
+	}, func(repo *db.GitRepo) error {
 		errCh := make(chan error)
 
 		go func() {
@@ -269,10 +229,18 @@ func (state *activeBuildStreamFileState) loadBuildFile(activeBuild *types.Active
 		}
 
 		return nil
-
-	}()
+	})
 
 	if err != nil {
+		log.Printf("Error loading build file: %v\n", err)
+		UpdateActivePlan(activePlan.Id, activePlan.Branch, func(ap *types.ActivePlan) {
+			ap.IsBuildingByPath[filePath] = false
+		})
+		activePlan.StreamDoneCh <- &shared.ApiError{
+			Type:   shared.ApiErrorTypeOther,
+			Status: http.StatusInternalServerError,
+			Msg:    "Error loading build file: " + err.Error(),
+		}
 		return err
 	}
 

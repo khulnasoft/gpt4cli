@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
+	shared "gpt4cli-shared"
+
 	"github.com/gorilla/mux"
-	"github.com/khulnasoft/gpt4cli/shared"
 )
 
 func CreatePlanHandler(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +98,7 @@ func CreatePlanHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	plan, err := db.CreatePlan(auth.OrgId, projectId, auth.User.Id, name)
+	plan, err := db.CreatePlan(r.Context(), auth.OrgId, projectId, auth.User.Id, name)
 
 	if err != nil {
 		log.Printf("Error creating plan: %v\n", err)

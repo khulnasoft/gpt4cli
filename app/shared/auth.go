@@ -1,5 +1,7 @@
 package shared
 
+import "fmt"
+
 type AuthHeader struct {
 	Token string `json:"token"`
 	OrgId string `json:"orgId"`
@@ -51,13 +53,18 @@ type ApiError struct {
 	BillingError *BillingError `json:"billingError,omitempty"`
 }
 
+func (e *ApiError) Error() string {
+	return fmt.Sprintf("%d Error: %s", e.Status, e.Msg)
+}
+
 type ClientAccount struct {
-	IsCloud  bool   `json:"isCloud"`
-	Host     string `json:"host"`
-	Email    string `json:"email"`
-	UserName string `json:"userName"`
-	UserId   string `json:"userId"`
-	Token    string `json:"token"`
+	IsCloud     bool   `json:"isCloud"`
+	Host        string `json:"host"`
+	Email       string `json:"email"`
+	UserName    string `json:"userName"`
+	UserId      string `json:"userId"`
+	Token       string `json:"token"`
+	IsLocalMode bool   `json:"isLocalMode"`
 
 	IsTrial bool `json:"isTrial"` // legacy field
 }
