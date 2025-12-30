@@ -82,7 +82,7 @@ export API_HOST=api.your-domain.ai
 The server can be run from a Dockerfile at `app/Dockerfile.server`:
 
 ```bash
-git clone https://github.com/khulnasoft/gpt4cli.git
+git clone https://github.com/khulnasoft-lab/gpt4cli.git
 VERSION=$(cat app/server/version.txt) # or use the version you want
 git checkout server/v$VERSION
 cd gpt4cli/app
@@ -104,12 +104,12 @@ The API_HOST and SMTP environment variables above are only required if you're ru
 
 ### DockerHub Server Images
 
-Apart from building manually with the Dockerfile, server images are also built and pushed to [DockerHub](https://hub.docker.com/r/khulnasoft/gpt4cli-server/tags) automatically when a new version of the server is released.
+Apart from building manually with the Dockerfile, server images are also built and pushed to [DockerHub](https://hub.docker.com/r/gpt4cliai/gpt4cli-server/tags) automatically when a new version of the server is released.
 
 You can pull the latest server image with:
 
 ```bash
-docker pull khulnasoft/gpt4cli-server:latest
+docker pull gpt4cliai/gpt4cli-server:latest
 ```
 
 ### Run From Source
@@ -117,7 +117,7 @@ docker pull khulnasoft/gpt4cli-server:latest
 You can also run the server from source:
 
 ```bash
-git clone https://github.com/khulnasoft/gpt4cli.git
+git clone https://github.com/khulnasoft-lab/gpt4cli.git
 cd gpt4cli/
 VERSION=$(cat app/server/version.txt) # or use the version you want
 git checkout server/v$VERSION

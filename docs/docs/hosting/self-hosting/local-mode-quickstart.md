@@ -14,7 +14,7 @@ The quickstart requires git, docker, and docker-compose. It's designed for local
 1. Run the server in local mode: 
 
 ```bash
-git clone https://github.com/khulnasoft/gpt4cli.git
+git clone https://github.com/khulnasoft-lab/gpt4cli.git
 cd gpt4cli/app
 ./start_local.sh
 ```
@@ -36,13 +36,13 @@ gpt4cli sign-in
 5. If you don't have an OpenRouter account, first [sign up here.](https://openrouter.ai/signup) Then [generate an API key here.](https://openrouter.ai/keys) Set the `OPENROUTER_API_KEY` environment variable:
 
 ```bash
-export OPENROUTER_API_KEY=<your-openrouter-api-key>
+export OPENROUTER_API_KEY=...
 ```
 
-6. If you don't have an OpenAI account, first [sign up here.](https://platform.openai.com/signup) Then [generate an API key here.](https://platform.openai.com/account/api-keys) Set the `OPENAI_API_KEY` environment variable:
+6. **Optional**: set a `OPENAI_API_KEY` environment variable if you want OpenAI models to use the OpenAI API directly instead of OpenRouter (for slightly lower latency and costs). This requires an [OpenAI account.](https://platform.openai.com/signup).
 
 ```bash
-export OPENAI_API_KEY=<your-openai-api-key>
+export OPENAI_API_KEY=...
 ```
 
 7. In a project directory, start the Gpt4cli REPL:
@@ -52,3 +52,15 @@ gpt4cli
 ```
 
 You're ready to start building!
+
+## Upgrade
+
+To upgrade after a new release, just use `ctrl-c` to stop the server, then run the script again:
+
+```bash
+./start_local.sh
+```
+
+The script will pull the latest image before the server starts.
+
+

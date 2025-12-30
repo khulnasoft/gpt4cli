@@ -43,25 +43,75 @@ The 'hasChange' property is a boolean that indicates whether there is anything t
 
 The 'old' property is an object with 3 properties: 'entireFile', 'startLineString' and 'endLineString'.
 
-	'entireFile' is a boolean that indicates whether the **entire file** is being replaced. If 'entireFile' is true, 'startLineString' and 'endLineString' must be empty strings. If 'entireFile' is false, 'startLineString' and 'endLineString' must be valid strings that exactly match lines from the original file. If 'entireFile' is false, 'startLineString' and 'endLineString' MUST NEVER be empty strings.
+### Quick Reference: Change Region Fields
 
-	'startLineString' is the **entire, exact line** where the section to be replaced begins in the original file, including the line number. Unless it's the first change, 'startLineString' ABSOLUTELY MUST begin with a line number that is HIGHER than both the 'endLineString' of the previous change and the 'startLineString' of the previous change. **The line number and line MUST EXACTLY MATCH a line from the original file.**
-	
-	If the previous change's 'endLineString' starts with 'g4c-75: ', then the current change's 'startLineString' MUST start with 'g4c-76: ' or higher. It MUST NOT be 'g4c-75: ' or lower. If the previous change's 'startLineString' starts with 'g4c-88: ' and the previous change's 'endLineString' is an empty string, then the current change's 'startLineString' MUST start with 'g4c-89: ' or higher. If the previous change's 'startLineString' starts with 'g4c-100: ' and the previous change's 'endLineString' starts with 'g4c-105: ', then the current change's 'startLineString' MUST start with 'g4c-106: ' or higher.
-	
-	'endLineString' is the **entire, exact line** where the section to be replaced ends in the original file. Pay careful attention to spaces and indentation. 'startLineString' and 'endLineString' must be *entire lines* and *not partial lines*. Even if a line is very long, you must include the entire line, including the line number and all text on the line. **The line number and line MUST EXACTLY MATCH a line from the original file.**
-	
-	**For a single line replacement, 'endLineString' MUST be an empty string.**
+- **entireFile** (boolean):
+  - `true`: The entire file is being replaced. Both `startLineString` and `endLineString` must be empty strings.
+  - `false`: Only a section is being replaced. Both `startLineString` and `endLineString` must exactly match lines from the original file (including the `g4c-` prefix).
 
-	'endLineString' MUST ALWAYS come *after* 'startLineString' in the original file. It must start with a line number that is HIGHER than the 'startLineString' line number. If 'startLineString' starts with 'g4c-22: ', then 'endLineString' MUST either be an empty string (for a single line replacement) or start with 'g4c-23: ' or higher (for a multi-line replacement).	
+- **startLineString** (string):
+  - The exact line (including line number and all text) where the replacement begins.
+  - Must match a line from the original file **exactly** (including whitespace and indentation).
+  - For multiple changes, must be strictly after the previous change's `endLineString` and `startLineString`.
+  - Example: If previous `endLineString` is `g4c-75: ...`, the next `startLineString` must be `g4c-76: ...` or higher.
 
-	If 'hasChange' is false, both 'startLineString' and 'endLineString' must be empty strings. If 'hasChange' is true, 'startLineString' and 'endLineString' must be valid strings that exactly match lines from the original file. If 'hasChange' is true, 'startLineString' and 'endLineString' MUST NEVER be empty strings.
+- **endLineString** (string):
+  - The exact line where the replacement ends (must match original file exactly).
+  - For single-line replacements, must be an empty string.
+  - Must always be after `startLineString` (by line number).
+  - Example: If `startLineString` is `g4c-22: ...`, `endLineString` must be empty (single-line) or `g4c-23: ...` or higher (multi-line).
 
-	If you are replacing the entire file, 'startLineString' MUST be the first line of the original file and 'endLineString' MUST be the last line of the original file.
+- **hasChange** (boolean):
+  - If `false`, both `startLineString` and `endLineString` must be empty strings.
+  - If `true`, both must be valid, exact lines from the original file (unless replacing entire file).
 
-The 'startLineIncludedReasoning' property is a string that very briefly explains whether 'startLineString' should be included in the 'new' property. For example, if the 'startLineString' is the closing bracket of a function and you are adding another function after it, you *MUST* include the 'startLineString' in the 'new' property, or the previous function will lose its closing bracket when the change is applied. Similarly, if the 'startLineString' is a function definition and you are updating the body of the function, you *MUST* also include 'startLineString' so that they function definition is not removed. The only time 'startLineString' should not be included in 'new' is if it is a line that should be removed or replaced. Generalize the above to all types of code blocks, changes, and syntax to ensure the 'new' property will not remove or overwrite code that should not be removed or overwritten. That also includes newlines, line breaks, and indentation.
+- **Replacing the entire file:**
+  - Set `entireFile: true`.
+  - `startLineString` and `endLineString` must be empty strings.
 
-'startLineIncluded' is a boolean that indicates whether 'startLineString' should be included in the 'new' property. If 'startLineIncluded' is true, 'startLineString' MUST be included in the 'new' property. If 'startLineIncluded' is false, 'startLineString' MUST not be included in the 'new' property.
+#### Field Combination Table
+| hasChange | entireFile | startLineString | endLineString |
+|-----------|------------|-----------------|---------------|
+| false     | any        | ""              | ""            |
+| true      | true       | ""              | ""            |
+| true      | false      | required        | required/""   |
+
+#### Examples
+```json
+// Replace a single line
+"old": {
+  "entireFile": false,
+  "startLineString": "g4c-22: let x = 5;",
+  "endLineString": ""
+}
+
+// Replace entire file
+"old": {
+  "entireFile": true,
+  "startLineString": "",
+  "endLineString": ""
+}
+```
+
+#### Common Mistakes to Avoid
+- Setting `endLineString` to a line number lower than or equal to `startLineString`.
+- Omitting the `g4c-` prefix on line numbers.
+- Not matching the original line exactly (including all whitespace and indentation).
+- Overlapping or adjacent changes—each change region must be strictly separate.
+
+#### Error Handling
+If you cannot find the required line in the original file (e.g., due to corruption), flag the issue and do not attempt to guess the line content.
+
+---
+
+**startLineIncludedReasoning** (string):
+- Briefly explain whether `startLineString` should be included in the `new` property.
+- Include it if omitting would remove necessary code structure (e.g., function headers, closing brackets).
+- Exclude it only if the line is meant to be removed or replaced.
+
+**startLineIncluded** (boolean):
+- If `true`, `startLineString` must be included in the `new` property.
+- If `false`, it must not be included.
 
 The 'endLineIncludedReasoning' property is a string that very briefly explains whether 'endLineString' should be included in the 'new' property. For example, if the 'endLineString' is the opening bracket of a function and you are adding another function before it, you *MUST* include the 'endLineString' in the 'new' property, or the subsequent function will lose its opening bracket when the change is applied. Similarly, if the 'endLineString' is the closing bracket of a function and you are updating the body of the function, you *MUST* also include 'endLineString' so that the closing bracket not removed. The only time 'endLineString' should not be included in 'new' is if it is a line that should be removed or replaced. Generalize the above to all types of code blocks, changes, and syntax to ensure the 'new' property will not remove or overwrite code that should not be removed or overwritten. That also includes newlines, line breaks, and indentation.
 

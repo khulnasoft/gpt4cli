@@ -6,13 +6,14 @@ require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/chromedp/cdproto v0.0.0-20250319231242-a755498943c8
 	github.com/chromedp/chromedp v0.13.3
-	github.com/coreos/go-systemd/v22 v22.3.2
+	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/fatih/color v1.18.0
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	github.com/khulnasoft-lab/survey/v2 v2.3.7
-	github.com/khulnasoft/go-prompt v0.0.0-20250312145155-48d967a4d502
+	github.com/khulnasoft/go-prompt v0.0.0-00010101000000-000000000000
+	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a
 	github.com/olekukonko/tablewriter v0.0.5
@@ -83,5 +84,7 @@ require (
 	golang.org/x/text v0.23.0 // indirect
 	gpt4cli-shared v0.0.0-00010101000000-000000000000
 )
+
+replace github.com/khulnasoft/go-prompt => github.com/khulnasoft-lab/go-prompt v0.0.0-20250312144254-f7a6a493dfb8
 
 replace gpt4cli-shared => ../shared

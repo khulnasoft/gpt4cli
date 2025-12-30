@@ -1,3 +1,106 @@
+## CLI Version 2.1.6+1
+- Error handling fix
+- Fix for some roles in the `daily-driver` model pack that weren't correctly updated to Sonnet 4 in 2.1.6
+- Added fallback from Sonnet 4 to Sonnet 3.7 to deal with occasional provider errors and rate limit issues
+
+## CLI Version 2.1.6
+- The newly released Claude Sonnet 4 is now stable in testing, so it now replaces Sonnet 3.7 as the default model for context sizes under 200k across all model packs where 3.7 was previously used.
+- A new `strong-opus` model pack is now available. It uses Claude Opus 4 for planning and coding, and is otherwise the same as the 'strong' pack. Use it with `\set-model strong-opus` to try it out.
+- The `opus-4-planner` model pack that was introduced in 2.1.5 has been renamed to `opus-planner`, but the old name is still supported. This model pack uses Claude Opus 4 for planning, and the default models for other roles.
+- Fix for occasional garbled error message when the model is unresponsive.
+- Fix for occasional 'couldn't aquire lock' error after stream finishes.
+- Additional retry when model is unresponsive or hits provider rate limits—helps particularly with new Opus 4 model on OpenRouter.
+
+## CLI Version 2.1.5
+- Added newly released Claude Sonnet 4 and Claude Opus 4 as built-in models.
+- Sonnet 4 isn't yet used in the default 'daily-driver' model pack due to sporadic errors in early testing, but it can be used with the 'sonnet-4-daily' model pack (use '\set-model sonnet-4-daily' to use it). It will be promoted to the default model pack soon.
+- Opus 4 can be used with the 'opus-4-planner' model pack ( '\set-model opus-4-planner'), which uses Opus 4 for planning and Sonnet 4 for coding.
+- Removed error fallbacks for o4-mini and gemini-2.5-pro-preview.
+
+## CLI Version 2.1.3
+- Fix for default model pack not being correctly applied to new plans
+- Fix for potential crash on Linux when applying a plan
+
+## CLI Version 2.1.2
+- Fix for rare auto-load context timeout error when no files are loaded.
+
+## CLI Version 2.1.1
+- Fix for free Gemini 2.5 Pro Experimental OpenRouter endpoint.
+- Retries for "No endpoints found that support cache control" error that showed up when OpenRouter temporarily disabled caching for Gemini 2.5 Pro Preview.
+- Other minor improvements to error handling and retries.
+
+## CLI Version 2.1.0+1
+- Fix for potential encoding issue when loading files into context.
+
+## CLI Version 2.1.0
+## 🚀  OpenRouter only for BYO key
+
+- When using a BYO key mode (either cloud or self-hosted), you can now use Gpt4cli with **only** an OpenRouter.ai account and `OPENROUTER_API_KEY` set. A separate OpenAI account is no longer required.
+
+- You can still use a separate OpenAI account if desired by setting the `OPENAI_API_KEY` environment variable in addition to `OPENROUTER_API_KEY`. This will cause OpenAI models to make direct calls to OpenAI, which is slightly faster and cheaper.
+
+## 🧠  New Models
+
+### Gemini
+
+- Google's Gemini 2.5 Pro Preview is now available as a built-in model, and is the new default model when context is between 200k and 1M tokens.
+
+- A new `gemini-preview` model pack has been added, which uses Gemini 2.5 Pro Preview for planning and coding, and default models for other roles. You can use this pack by running the REPL with the `--gemini-preview` flag (`gpt4cli --gemini-preview`), or with `\set-model gemini-preview` from inside the REPL. Because this model is still in preview, a fallback to Gemini 1.5 Pro is used on failure.
+
+- Google's Gemini Flash 2.5 Preview is also now available as a built-in model. While it's not currently used by default in any built-in model packs, you can use with `\set-model` or a custom model pack.
+
+### OpenAI
+
+- OpenAI's o4-mini is now available as a built-in model with `high`, `medium`, and `low` reasoning effort levels. o3-mini has been replaced by the corresponding o4-mini models across all model packs, with a fallback to o3-mini on failure. This improves Gpt4cli's file edit reliability and performance with no increase in costs. o4-mini-medium is also the new default planning model for the `cheap` model pack.
+
+- OpenAI's o3 is now available as a built-in model with `high`, `medium`, and `low` reasoning effort levels. Note that if you're using Gpt4cli in BYO key mode, OpenAI requires an organization verification step before you can use o3.
+
+- o3-high is the new default planning model for the `strong` model pack, replacing o1. Due to the verification requirements for o3, the `strong` pack falls back to o4-mini-high for planning if o3 is not available.
+
+- OpenAI's gpt-4.1, gpt-4.1-mini, and gpt-4.1-nano have been added as built-in models, replacing gpt-4o and gpt-4o-mini in all model packs that used them previously.
+
+- gpt-4.1 is now used as a large context fallback for the default `coder` role, effectively increasing the context limit for the implementation phase from 200k to 1M tokens.
+
+- gpt-4.1 is also the new `coder` model in the `cheap` model pack, and is also the new main planning and coding model in the `openai` model pack.
+
+## 🛟  Model Fallbacks
+
+- In order to better incorporate newly released models and preview models that may have initial reliability or capacity issues, a more robust fallback and retry system has been implemented. This will allow for faster introduction of new models in the future while still maintaining a high level of reliability.
+
+- Fallbacks for 'context length exceeded' errors have also been improved, so that these errors will now trigger an automatic fallback to a model with a larger context limit if one is defined in the model pack. This will fix issues like https://github.com/khulnasoft-lab/gpt4cli/issues/232 where the stream errors with a 400 or 413 error when context is exceeded instead of falling back correctly.
+
+## 💰  Gemini Caching
+
+- Gemini models now support prompt caching, significantly reducing costs and latency during planning, implementation, and builds when using Gemini models.
+
+## 🤫  Quieter Reasoning
+
+- When using Claude 3.7 Sonnet thinking model in the `reasoning` AND `strong` model packs, reasoning is no longer included by default. This clears up some issues that were caused by output with specific formatting that Gpt4cli takes action on being duplicated between the reasoning and the main output. It also feels a bit more relaxed to keep the reasoning behind-the-scenes, even though there can be a longer wait for the initial output.
+
+## 💻  REPL Improvements
+
+- Additional handling of possibly incorrect or mistyped commands in the REPL. Now apart from suggesting commands only based on possibly mistyped backslash commands, any likely command with or without the backslash will suggest possible commands rather than sending the prompt straight to the AI model, which can waste tokens due to minor typos or a missing backslash.
+
+## ☁️  Gpt4cli Cloud
+
+- If you started a free trial of Gpt4cli Cloud with BYO Key mode, you can now switch to a trial of Integrated Models mode if desired from your [billing dashboard](https://app.gpt4cli.khulnasoft.com/settings/billing) (use `illing` from the REPL to open the dashboard).
+
+- When doing a trial in Integrated Models mode, you will now be warned when your trial credits balance goes below $1.00.
+
+- In Integrated Models mode, the required number of credits to send a prompt is now much lower, so you can use more credits before getting an 'Insufficient credits' message.
+
+## 🐞  Bug Fixes
+
+- Fix for 'Plan replacement failed' error during file edits on Windows that was caused by mismatched line endings.
+
+- Fix for 'tool calls not supported' error for custom models that use the XML output format (https://github.com/khulnasoft-lab/gpt4cli/issues/238).
+
+- Fix for errors in some roles with Anthropic models when only a single system message was sent (https://github.com/khulnasoft-lab/gpt4cli/issues/208).
+
+- Fix for potential back-pressure issue with large/concurrent project map operations.
+
+- Gpt4cli Cloud: fix for JSON parsing error on payment form when the card is declined. It will now show the proper error message.
+
 ## CLI Version 2.0.7+1
 - Small adjustment to previous release: in the REPL, select the first auto-complete suggestion on 'enter' if any suggestions are listed.
 
@@ -49,8 +152,8 @@
 - Fixed bug where build output would jump between collapsed and expanded states during a stream, after the user manually expanded.
 
 ## CLI Version 2.0.1
-- Fix for REPL startup failing when self-hosting or using BYOK cloud mode (https://github.com/khulnasoft/gpt4cli/issues/216)
-- Fix for potential crash with custom model pack (https://github.com/khulnasoft/gpt4cli/issues/217)
+- Fix for REPL startup failing when self-hosting or using BYOK cloud mode (https://github.com/khulnasoft-lab/gpt4cli/issues/216)
+- Fix for potential crash with custom model pack (https://github.com/khulnasoft-lab/gpt4cli/issues/217)
 
 ## CLI Version 2.0.0
 👋 Hi, Dane here. I'm the creator and lead developer of Gpt4cli.
@@ -80,7 +183,7 @@ Gpt4cli can:
 
 Adding these capabilities together, Gpt4cli can handle complex tasks that span entire large features or entire projects, generating 50-100 files or more in a single run.
 
-Below is a more detailed look at what's new. You can also check out the updated [README](https://github.com/khulnasoft/gpt4cli/blob/main/README.md), [website](https://gpt4cli.khulnasoft.com), and [docs](https://docs.gpt4cli.khulnasoft.com).
+Below is a more detailed look at what's new. You can also check out the updated [README](https://github.com/khulnasoft-lab/gpt4cli/blob/main/README.md), [website](https://gpt4cli.khulnasoft.com), and [docs](https://docs.gpt4cli.khulnasoft.com).
 
 ## 🧠  Newer, Smarter Models
 
@@ -164,11 +267,11 @@ Go to the [quickstart](https://docs.gpt4cli.khulnasoft.com/quickstart) to get st
 
 - Jump into the [Gpt4cli Discord](https://discord.gg/khulnasoft) if you have questions or feedback, or just want to hang out.
 
-- You can [post an issue on GitHub](https://github.com/khulnasoft/gpt4cli/issues) or [start a discussion](https://github.com/khulnasoft/gpt4cli/discussions).
+- You can [post an issue on GitHub](https://github.com/khulnasoft-lab/gpt4cli/issues) or [start a discussion](https://github.com/khulnasoft-lab/gpt4cli/discussions).
 
 - You can reach out by email: [support@gpt4cli.khulnasoft.com](mailto:support@gpt4cli.khulnasoft.com).
 
-- You can follow [@KhulnaSoft](https://x.com/khulnasoft) or my personal account [@Danenania](https://x.com/danenania) on X for updates, announcements, and random musings.
+- You can follow [@Gpt4cliAI](https://x.com/gpt4cliai) or my personal account [@Danenania](https://x.com/danenania) on X for updates, announcements, and random musings.
 
 - You can subscribe on [YouTube](https://www.youtube.com/@gpt4cli-ny5ry) for demonstrations, tutorials, and AI coding projects.
 
@@ -186,7 +289,7 @@ You can now easily use Claude 3.5 Sonnet with Gpt4cli through OpenRouter.ai.
 3. Run `export OPENROUTER_API_KEY=...` in your terminal.
 4. Run `gpt4cli set-model`, select `choose a model pack to change all roles at once` and then choose either `anthropic-claude-3.5-sonnet` (which uses Claude 3.5 Sonnet for all heavy lifting and Claude 3 Haiku for lighter tasks) or `anthropic-claude-3.5-sonnet-gpt-4o` (which uses Claude 3.5 Sonnet for planning and summarization, gpt-4o for builds, and gpt-3.5-turbo for lighter tasks)
 
-[gpt4cli-claude-3.5-sonnet](https://github.com/khulnasoft/gpt4cli/blob/main/releases/images/cli/1.1.1/clause-3-5-sonnet.gif)
+[gpt4cli-claude-3.5-sonnet](https://github.com/khulnasoft-lab/gpt4cli/blob/main/releases/images/cli/1.1.1/clause-3-5-sonnet.gif)
 
 Remember, you can run `gpt4cli model-packs` for details on all built-in model packs.
 
@@ -195,7 +298,7 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 
 - You can now load images into context with `gpt4cli load path/to/image.png`. Supported image formats are png, jpeg, non-animated gif, and webp. So far, this feature is only available with the default OpenAI GPT-4o model.
 
-![gpt4cli-load-images](https://github.com/khulnasoft/gpt4cli/blob/main/releases/images/cli/1.1.0/gpt4cli-images.gif)
+![gpt4cli-load-images](https://github.com/khulnasoft-lab/gpt4cli/blob/main/releases/images/cli/1.1.0/gpt4cli-images.gif)
 
 ## No more hard OpenAI requirement for builder, verifier, and auto-fix roles 🧠
 
@@ -207,7 +310,7 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 
 - You can now reject pending changes to one or more files with the `gpt4cli reject` command. Running it with no arguments will reject all pending changes after confirmation. You can also reject changes to specific files by passing one or more file paths as arguments.
 
-![gpt4cli-reject](https://github.com/khulnasoft/gpt4cli/blob/main/releases/images/cli/1.1.0/gpt4cli-reject.gif)
+![gpt4cli-reject](https://github.com/khulnasoft-lab/gpt4cli/blob/main/releases/images/cli/1.1.0/gpt4cli-reject.gif)
 
 ## Summarization and auto-continue fixes 🛤 ️
 
@@ -253,13 +356,13 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 
 ## Version 1.0.0
 - CLI updates for the 1.0.0 release
-- See the [server/v1.0.0 release notes](https://github.com/khulnasoft/gpt4cli/releases/tag/server%2Fv1.0.0) for full details
+- See the [server/v1.0.0 release notes](https://github.com/khulnasoft-lab/gpt4cli/releases/tag/server%2Fv1.0.0) for full details
 
 ## Version 0.9.1
-- Fix for occasional stream TUI panic during builds with long file paths (https://github.com/khulnasoft/gpt4cli/issues/105)
-- If auto-upgrade fails due to a permissions issue, suggest re-running command with `sudo` (https://github.com/khulnasoft/gpt4cli/issues/97 - thanks @kalil0321!)
-- Include 'openrouter' in list of model providers when adding a custom model (https://github.com/khulnasoft/gpt4cli/issues/107)
-- Make terminal prompts that shouldn't be optional (like the Base URL for a custom model) required across the board (https://github.com/khulnasoft/gpt4cli/issues/108)
+- Fix for occasional stream TUI panic during builds with long file paths (https://github.com/khulnasoft-lab/gpt4cli/issues/105)
+- If auto-upgrade fails due to a permissions issue, suggest re-running command with `sudo` (https://github.com/khulnasoft-lab/gpt4cli/issues/97 - thanks @kalil0321!)
+- Include 'openrouter' in list of model providers when adding a custom model (https://github.com/khulnasoft-lab/gpt4cli/issues/107)
+- Make terminal prompts that shouldn't be optional (like the Base URL for a custom model) required across the board (https://github.com/khulnasoft-lab/gpt4cli/issues/108)
 - Data that is piped into `gpt4cli load` is now automatically given a name in `context ls` via a call to the `namer` role model (previously it had no name, making multiple pipes hard to disambiguate).
 - Still show the '(r)eject file' hotkey in the `gpt4cli changes` TUI when the current file isn't scrollable. 
 
@@ -274,13 +377,13 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 
 ## 'gpt4cli diff' command ⚖️
 
-![gpt4cli-diff](https://github.com/khulnasoft/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-diff.gif)
+![gpt4cli-diff](https://github.com/khulnasoft-lab/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-diff.gif)
 
 - New `gpt4cli diff` command shows pending plan changes in `git diff` format.
 
 ## Plans can be archived 🗄️
 
-![gpt4cli-archive](https://github.com/khulnasoft/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-archive.gif)
+![gpt4cli-archive](https://github.com/khulnasoft-lab/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-archive.gif)
 
 - If you aren't using a plan anymore, but you don't want to delete it, you can now archive it.
 - Use `gpt4cli archive` (or `gpt4cli arc` for short) to archive a plan.
@@ -290,7 +393,7 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 ## Custom models!! 🧠
 ### Use Gpt4cli with models from OpenRouter, Together.ai, and more
 
-![gpt4cli-models](https://github.com/khulnasoft/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-models.gif)
+![gpt4cli-models](https://github.com/khulnasoft-lab/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-models.gif)
 
 - Use `gpt4cli models add` to add a custom model and use any provider that is compatible with OpenAI, including OpenRouter.ai, Together.ai, Ollama, Replicate, and more.
 - Anthropic Claude models are available via OpenRouter.ai. Google Gemini 1.5 preview is also available on OpenRouter.ai but was flakey in initial testing. Tons of open source models are available on both OpenRouter.ai and Together.ai, among other providers.
@@ -299,7 +402,7 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 - The roles a custom model can be used for depend on its OpenAI compatibility.
 - Each model provider has an `ApiKeyEnvVar` associated with it, like `OPENROUTER_API_KEY`, `TOGETHER_API_KEY`, etc. You will need to have the appropriate environment variables set with a valid api key for each provider that you're using.
 - Because all of Gpt4cli's prompts have been tested against OpenAI models, support for new models should be considered **experimental**.
-- If you find prompting patterns that are effective for certain models, please share them on Discord (https://discord.gg/khulnasoft) or GitHub (https://github.com/khulnasoft/gpt4cli/discussions) and they may be included in future releases.
+- If you find prompting patterns that are effective for certain models, please share them on Discord (https://discord.gg/khulnasoft) or GitHub (https://github.com/khulnasoft-lab/gpt4cli/discussions) and they may be included in future releases.
 
 ## Model packs 🎛️
 - Instead of changing models for each role one by one, a model packs let you switch out all roles at once.
@@ -319,12 +422,12 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 ## Quality of life improvements 🧘‍♀️
 - Descriptive top-line for `gpt4cli apply` commit messages instead of just "applied pending changes".
 
-![gpt4cli-commit](https://github.com/khulnasoft/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-commit.png)
+![gpt4cli-commit](https://github.com/khulnasoft-lab/gpt4cli/blob/03263a83d76785846fd472693aed03d36a68b86c/releases/images/cli/0.9.0/gpt4cli-commit.png)
 
 - Better message in `gpt4cli log` when a single piece of context is loaded or updated.
 - Abbreviate really long file paths in `gpt4cli ls`.
 - Changed `OPENAI_ENDPOINT` env var to `OPENAI_API_BASE`, which is more standardized. OPENAI_ENDPOINT is still quietly supported.
-- guides/ENV_VARS.md now lists environment variables you can use with Gpt4cli (and a few convenience varaiables have been addded) - thanks @knno! → https://github.com/khulnasoft/gpt4cli/pull/94
+- guides/ENV_VARS.md now lists environment variables you can use with Gpt4cli (and a few convenience varaiables have been addded) - thanks @knno! → https://github.com/khulnasoft-lab/gpt4cli/pull/94
 
 ## Bug fixes 🐞
 - Fix for potential crash in `gpt4cli changes` TUI.
@@ -333,20 +436,20 @@ Remember, you can run `gpt4cli model-packs` for details on all built-in model pa
 ## Version 0.8.3
 - Add support for new OpenAI models: `gpt-4-turbo` and `gpt-4-turbo-2024-04-09`
 - Make `gpt-4-turbo` model the new default model for the planner, builder, and auto-continue roles -- in testing it seems to be better at reasoning and significantly less lazy than the previous default for these roles, `gpt-4-turbo-preview` -- any plan that has not previously had its model settings modified will now use `gpt-4-turbo` by default (those that have been modified will need to be updated manually) -- remember that you can always use `gpt4cli set-model` to change models for your plans
-- Fix for `set-model` command argument parsing (https://github.com/khulnasoft/gpt4cli/issues/75)
-- Fix for panic during plan stream when a file name's length exceeds the terminal width (https://github.com/khulnasoft/gpt4cli/issues/84)
-- Fix for handling files that are loaded into context and later deleted from the file system (https://github.com/khulnasoft/gpt4cli/issues/47)
-- Fix to prevent loading of duplicate files, directory trees, or urls into context (https://github.com/khulnasoft/gpt4cli/issues/57)
+- Fix for `set-model` command argument parsing (https://github.com/khulnasoft-lab/gpt4cli/issues/75)
+- Fix for panic during plan stream when a file name's length exceeds the terminal width (https://github.com/khulnasoft-lab/gpt4cli/issues/84)
+- Fix for handling files that are loaded into context and later deleted from the file system (https://github.com/khulnasoft-lab/gpt4cli/issues/47)
+- Fix to prevent loading of duplicate files, directory trees, or urls into context (https://github.com/khulnasoft-lab/gpt4cli/issues/57)
 
 ## Version 0.8.2
-- Fix root level --help/-h to use custom help command rather than cobra's help message (re: https://github.com/khulnasoft/gpt4cli/issues/25)
-- Include 'survey' fork (https://github.com/khulnasoft-lab/survey) as a proper module instead of a local reference (https://github.com/khulnasoft/gpt4cli/pull/37)
-- Add support for OPENAI_ENDPOINT environment variable for custom OpenAI endpoints (https://github.com/khulnasoft/gpt4cli/pull/46)
+- Fix root level --help/-h to use custom help command rather than cobra's help message (re: https://github.com/khulnasoft-lab/gpt4cli/issues/25)
+- Include 'survey' fork (https://github.com/khulnasoft-lab/survey) as a proper module instead of a local reference (https://github.com/khulnasoft-lab/gpt4cli/pull/37)
+- Add support for OPENAI_ENDPOINT environment variable for custom OpenAI endpoints (https://github.com/khulnasoft-lab/gpt4cli/pull/46)
 - Add support for OPENAI_ORG_ID environment variable for setting the OpenAI organization ID when using an API key with multiple OpenAI organizations.
 
 ## Version 0.8.1
-- Fix for missing 'host' key when creating an account or signing in to a self-hosted server (https://github.com/khulnasoft/gpt4cli/issues/11)
-- `add` alias for `load` command + `unload` alias for `rm` command (https://github.com/khulnasoft/gpt4cli/issues/12)
+- Fix for missing 'host' key when creating an account or signing in to a self-hosted server (https://github.com/khulnasoft-lab/gpt4cli/issues/11)
+- `add` alias for `load` command + `unload` alias for `rm` command (https://github.com/khulnasoft-lab/gpt4cli/issues/12)
 - Add `invite`, `revoke`, and `users` commands to `gpt4cli help` output
 - A bit of cleanup of extraneous logging
 

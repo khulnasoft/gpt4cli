@@ -15,11 +15,11 @@ That said, going forward, the intention is to release future versions as in-plac
 
 ## Feedback
 
-If you're a v1 user and you really want to bring your existing plans into v2, please [speak up on Discord](https://discord.gg/khulnasoft) or [on GitHub](https://github.com/khulnasoft/gpt4cli/discussions). This is doable, but I want to be sure there's demand for it before putting in the work.
+If you're a v1 user and you really want to bring your existing plans into v2, please [speak up on Discord](https://discord.gg/khulnasoft) or [on GitHub](https://github.com/khulnasoft-lab/gpt4cli/discussions). This is doable, but I want to be sure there's demand for it before putting in the work.
 
 ## What's New?
 
-Check out the [2.0.0 release notes](https://github.com/khulnasoft/gpt4cli/releases/tag/v2.0.0) for an overview of what's new in v2. There's a lot!
+Check out the [2.0.0 release notes](https://github.com/khulnasoft-lab/gpt4cli/releases/tag/v2.0.0) for an overview of what's new in v2. There's a lot!
 
 
 

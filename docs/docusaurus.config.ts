@@ -34,7 +34,7 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           routeBasePath: '/', // Serve the docs at the site's root
           editUrl:
-            'https://github.com/khulnasoft/gpt4cli/tree/main/docs/',
+            'https://github.com/khulnasoft-lab/gpt4cli/tree/main/docs/',
         },
         blog: false, // Disable the blog
         theme: {
@@ -61,7 +61,7 @@ const config: Config = {
       },
       items: [
         {
-          href: 'https://github.com/khulnasoft/gpt4cli',
+          href: 'https://github.com/khulnasoft-lab/gpt4cli',
           label: 'GitHub',
           position: 'right',
         },
@@ -72,7 +72,7 @@ const config: Config = {
         },
         {
           label: 'X',
-          href: 'https://x.com/KhulnaSoft',
+          href: 'https://x.com/Gpt4cliAI',
           position: 'right',
         },
         {
@@ -84,7 +84,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',      
-      copyright: `Copyright © ${new Date().getFullYear()} KhulnaSoft, Inc.`,
+      copyright: `Copyright © ${new Date().getFullYear()} KhulnaSoft, Ltd`,
     },
     prism: {
       theme: prismThemes.github,

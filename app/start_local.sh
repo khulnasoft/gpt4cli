@@ -31,5 +31,5 @@ fi
 
 echo "Starting the local Gpt4cli server and database..."
 
-docker compose build
+docker compose pull gpt4cli-server
 docker compose up

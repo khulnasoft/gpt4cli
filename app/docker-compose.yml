@@ -13,7 +13,7 @@ services:
     networks:
       - gpt4cli-network
   gpt4cli-server:
-    image: khulnasoft/gpt4cli-server:latest
+    image: gpt4cliai/gpt4cli-server:latest
     volumes:
       - gpt4cli-files:/gpt4cli-server
     ports:

@@ -74,5 +74,29 @@
       }
     }
   },
-  "required": ["comments", "problems", "changes"]
+  "required": ["comments", "problems", "changes"],
+  "examples": [
+    {
+      "comments": [
+        { "txt": "// rest of the function...", "reference": true }
+      ],
+      "problems": "The file contains a placeholder comment instead of the actual function code.",
+      "changes": [
+        {
+          "summary": "Replace placeholder with actual function code.",
+          "hasChange": true,
+          "old": {
+            "entireFile": false,
+            "startLineString": "g4c-5: // rest of the function...",
+            "endLineString": ""
+          },
+          "startLineIncludedReasoning": "The placeholder line should not be included.",
+          "startLineIncluded": false,
+          "endLineIncludedReasoning": "No end line for single-line replacement.",
+          "endLineIncluded": false,
+          "new": "return x + y;"
+        }
+      ]
+    }
+  ]
 }

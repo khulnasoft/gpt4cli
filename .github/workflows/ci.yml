@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  shellcheck:
+    name: ShellCheck Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint install.sh
+        run: shellcheck app/cli/install.sh
+
+  dry-run-installer:
+    name: Dry Run Installer Script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make script executable
+        run: chmod +x app/cli/install.sh
+      - name: Dry run install.sh (syntax check only)
+        run: bash -n app/cli/install.sh
+      # Optionally, do a non-root dry run (won't actually install)
+      - name: Simulate install.sh (no root, expect permission error)
+        run: |
+          bash app/cli/install.sh || echo "Expected non-root error"

@@ -5,16 +5,27 @@
     problems: file://assets/removal/problems.txt
     postBuildState: file://assets/removal/post_build.go
   assert:
+    # Assert output is valid JSON
     - type: is-json
+      message: "Output is not valid JSON."
+    # Assert output matches OpenAI function call format
     - type: is-valid-openai-tools-call
+      message: "Output is not a valid OpenAI tools function call."
+    # Semantic checks using JavaScript
     - type: javascript
       value: |
-        var args = JSON.parse(output[0].function.arguments)
-        return (
-          args.problems && 
-          args.changes.length > 0 &&
-          args.changes.some(
-            change => change.hasChange && 
-                      change.new.includes("var contextRmCmd = &cobra.Command{")
-          )
-        )
+        var args = JSON.parse(output[0].function.arguments);
+        // Check problems is a non-empty string
+        if (!args.problems || typeof args.problems !== "string" || !args.problems.trim()) return false;
+        // Check comments is an array
+        if (!Array.isArray(args.comments)) return false;
+        // Check changes is a non-empty array
+        if (!Array.isArray(args.changes) || args.changes.length === 0) return false;
+        // At least one change has the expected new code
+        if (!args.changes.some(
+          change => change.hasChange && 
+                    typeof change.new === "string" &&
+                    change.new.includes("var contextRmCmd = &cobra.Command{")
+        )) return false;
+        return true;
+      message: "Output does not contain a valid change with the expected code and required structure."

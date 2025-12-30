@@ -1,0 +1,22 @@
+{
+  "logo.alt": {
+    "message": "Gpt4cli Logo",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  },
+  "item.label.Discord": {
+    "message": "Discord",
+    "description": "Navbar item with label Discord"
+  },
+  "item.label.X": {
+    "message": "X",
+    "description": "Navbar item with label X"
+  },
+  "item.label.YouTube": {
+    "message": "YouTube",
+    "description": "Navbar item with label YouTube"
+  }
+}
