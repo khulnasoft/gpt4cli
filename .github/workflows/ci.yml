@@ -11,7 +11,7 @@ jobs:
     name: ShellCheck Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Lint install.sh
@@ -21,7 +21,7 @@ jobs:
     name: Dry Run Installer Script
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Make script executable
         run: chmod +x app/cli/install.sh
       - name: Dry run install.sh (syntax check only)
