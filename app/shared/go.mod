@@ -1,6 +1,6 @@
 module gpt4cli-shared
 
-go 1.23.3
+go 1.25.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1
@@ -18,5 +18,5 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/shopspring/decimal v1.4.0
-	golang.org/x/image v0.25.0
+	golang.org/x/image v0.38.0
 )

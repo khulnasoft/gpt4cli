@@ -1,6 +1,6 @@
 module gpt4cli-cli
 
-go 1.23.3
+go 1.25.0
 
 require (
 	github.com/charmbracelet/lipgloss v1.0.0
@@ -58,7 +58,7 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.2 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/net v0.18.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 )
 
@@ -80,8 +80,8 @@ require (
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/xlab/treeprint v1.2.0
-	golang.org/x/image v0.25.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/image v0.38.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	gpt4cli-shared v0.0.0-00010101000000-000000000000
 )
 
